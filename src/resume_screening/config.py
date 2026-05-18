@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class CategoryConfig(BaseModel):
@@ -53,5 +53,5 @@ class AppConfig(BaseModel):
 def load_config(path: Path) -> AppConfig:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
-        raise ValidationError.from_exception_data("AppConfig", [])
+        raise ValueError("config file must contain a YAML mapping")
     return AppConfig.model_validate(raw)

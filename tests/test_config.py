@@ -77,3 +77,23 @@ def test_config_rejects_missing_model_when_manual_mode_disabled() -> None:
                 },
             }
         )
+
+
+def test_cli_app_imports_cleanly() -> None:
+    from resume_screening.cli import app
+
+    assert app is not None
+
+
+def test_example_config_loads() -> None:
+    loaded = load_config(Path("config.example.yaml"))
+
+    assert loaded.model.allow_without_model is True
+
+
+def test_load_config_rejects_non_mapping_yaml(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("- not\n- a\n- mapping\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="config file must contain a YAML mapping"):
+        load_config(config_path)
