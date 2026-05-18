@@ -1,0 +1,7 @@
+.scratch/
+node_modules
+data/
+logs/
+outputs/
+.env
+config.yaml
