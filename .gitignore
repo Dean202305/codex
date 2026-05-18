@@ -1,4 +1,5 @@
 .scratch/
+.worktrees/
 node_modules
 data/
 logs/
