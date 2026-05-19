@@ -24,6 +24,9 @@ test = ["pytest>=8.0"]
 [project.scripts]
 resume-screening = "resume_screening.cli:app"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
