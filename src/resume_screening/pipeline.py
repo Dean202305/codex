@@ -24,6 +24,7 @@ from resume_screening.models import (
     ScreeningResult,
     ScreeningScores,
 )
+from resume_screening.text_utils import sanitize_text
 
 
 class ScreeningPipeline:
@@ -39,7 +40,7 @@ class ScreeningPipeline:
         jobs = load_job_requirements(self.config.job_book)
         writer = ResultWorkbookWriter(self.config.result_book)
         index = DuplicateIndex.load(self.config.index_path)
-        client = None if self.config.model.allow_without_model else ModelClient(self.config.model)
+        client = ModelClient(self.config.model) if self.config.model.is_complete() else None
         stats = PipelineStats()
         files = self._resume_files()
         self._emit(PipelineEvent("run_started", f"开始处理 {len(files)} 个文件", total=len(files)))
@@ -48,6 +49,11 @@ class ScreeningPipeline:
             self._emit(PipelineEvent("file_started", f"正在处理：{path.name}", current=current, total=len(files), filename=path.name))
             parsed = parse_resume_filename(path)
             extraction = extract_text(path, self.config.ocr_command)
+            extraction = ExtractionResult(
+                text=sanitize_text(extraction.text),
+                method=extraction.method,
+                errors=[sanitize_text(error) for error in extraction.errors],
+            )
             duplicate = index.find(extraction.text) if extraction.text else DuplicateMatch(False)
             result = self._screen(parsed, extraction, jobs, client)
             row_id = writer.append_result(

@@ -1,5 +1,8 @@
 import pytest
 
+from resume_screening.config import ModelConfig
+from resume_screening.model_client import ModelClient
+from resume_screening.models import JobRequirement
 from resume_screening.model_client import parse_model_response
 
 
@@ -51,3 +54,21 @@ def test_parse_model_response_rejects_unknown_category() -> None:
                 },
             }
         )
+
+
+def test_build_prompt_replaces_invalid_unicode_surrogates() -> None:
+    client = ModelClient(
+        ModelConfig(
+            provider="openai-compatible",
+            base_url="https://api.example.com/v1",
+            api_key="test",
+            model="screening-model",
+            allow_without_model=False,
+        )
+    )
+    job = JobRequirement("财务总监", {}, "岗位要求", True, [])
+
+    prompt = client._build_prompt("候选人\ud835简历", job, {"candidate_name": "郭燕婷"})
+
+    prompt.encode("utf-8")
+    assert "\ud835" not in prompt

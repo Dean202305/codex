@@ -15,6 +15,7 @@ from resume_screening.models import (
     ScreeningResult,
     ScreeningScores,
 )
+from resume_screening.text_utils import sanitize_jsonable, sanitize_text
 
 
 VALID_CATEGORIES = {CATEGORY_RECOMMEND, CATEGORY_CONSIDER, CATEGORY_MANUAL, CATEGORY_REJECT}
@@ -50,7 +51,7 @@ class ModelPayload(BaseModel):
 
 def parse_model_response(payload: dict) -> ScreeningResult:
     try:
-        parsed = ModelPayload.model_validate(payload)
+        parsed = ModelPayload.model_validate(sanitize_jsonable(payload))
     except ValidationError as exc:
         raise ValueError(f"模型返回格式不符合JSON结构：{exc}") from exc
     return ScreeningResult(
@@ -89,22 +90,23 @@ class ModelClient:
         return parse_model_response(json.loads(content))
 
     def _build_prompt(self, resume_text: str, job: JobRequirement, filename_metadata: dict[str, str]) -> str:
+        payload = {
+            "instruction": "根据岗位要求和简历内容进行初筛。评分均为0到10分，8分通过，9分优秀。稳定性/风险高分表示低风险。只返回指定JSON字段。",
+            "required_json_fields": [
+                "category",
+                "overall_score",
+                "summary",
+                "screening_reason",
+                "missing_information",
+                "reject_reason",
+                "scores",
+            ],
+            "allowed_categories": sorted(VALID_CATEGORIES),
+            "filename_metadata": filename_metadata,
+            "job_requirement": {"sheet_name": job.sheet_name, "fields": job.fields, "raw_text": job.raw_text},
+            "resume_text": sanitize_text(resume_text)[:12000],
+        }
         return json.dumps(
-            {
-                "instruction": "根据岗位要求和简历内容进行初筛。评分均为0到10分，8分通过，9分优秀。稳定性/风险高分表示低风险。只返回指定JSON字段。",
-                "required_json_fields": [
-                    "category",
-                    "overall_score",
-                    "summary",
-                    "screening_reason",
-                    "missing_information",
-                    "reject_reason",
-                    "scores",
-                ],
-                "allowed_categories": sorted(VALID_CATEGORIES),
-                "filename_metadata": filename_metadata,
-                "job_requirement": {"sheet_name": job.sheet_name, "fields": job.fields, "raw_text": job.raw_text},
-                "resume_text": resume_text[:12000],
-            },
+            sanitize_jsonable(payload),
             ensure_ascii=False,
         )

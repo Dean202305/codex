@@ -37,6 +37,9 @@ class ModelConfig(BaseModel):
             raise ValueError(f"model config missing required values: {joined}")
         return self
 
+    def is_complete(self) -> bool:
+        return all(getattr(self, name) for name in ("base_url", "api_key", "model"))
+
 
 class AppConfig(BaseModel):
     resume_dir: Path

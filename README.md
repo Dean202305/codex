@@ -40,3 +40,4 @@ The web page has four steps:
 
 Set `model.allow_without_model: true` to process files without model calls.
 Rows that require model judgment are classified as `待人工二筛`.
+When `base_url`, `api_key`, and `model` are all set, the tool uses the model first even if fallback mode is enabled.

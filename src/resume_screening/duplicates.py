@@ -9,10 +9,11 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from resume_screening.models import DuplicateMatch
+from resume_screening.text_utils import sanitize_text
 
 
 def normalize_text(text: str) -> str:
-    return re.sub(r"\s+", "", text).strip()
+    return re.sub(r"\s+", "", sanitize_text(text)).strip()
 
 
 def fingerprint(text: str) -> str:

@@ -150,7 +150,7 @@ export function App() {
           <label>API Key<input type="password" value={config.model.api_key} onChange={(event) => updateModel("api_key", event.target.value)} /></label>
           <label>模型名<input value={config.model.model} onChange={(event) => updateModel("model", event.target.value)} /></label>
           <label>超时时间（秒）<input type="number" value={config.model.timeout_seconds} onChange={(event) => updateModel("timeout_seconds", Number(event.target.value))} /></label>
-          <label className="checkbox"><input type="checkbox" checked={config.model.allow_without_model} onChange={(event) => updateModel("allow_without_model", event.target.checked)} />允许无模型运行并进入待人工二筛</label>
+          <label className="checkbox"><input type="checkbox" checked={config.model.allow_without_model} onChange={(event) => updateModel("allow_without_model", event.target.checked)} />模型不可用时允许进入待人工二筛兜底</label>
           <div className="actions">
             <button onClick={saveConfig}><Save size={18} />保存配置</button>
             <button className="primary" onClick={runPrecheck}>运行预检</button>
