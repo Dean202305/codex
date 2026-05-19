@@ -1,5 +1,6 @@
 .scratch/
 .worktrees/
+.superpowers/
 node_modules
 data/
 logs/
