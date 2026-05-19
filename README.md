@@ -22,6 +22,19 @@ It rereads `/Users/mac/Downloads/小A自动化岗位说明书.xlsx` on every run
 Historical rows are preserved.
 Duplicate resume content is still appended and marked red.
 
+## Web Interface
+
+Double-click `启动简历筛选网页版.command` from this project folder.
+
+On first launch, the script creates or reuses `.venv`, installs the tool, creates `config.yaml` from `config.example.yaml` if needed, builds the React page if needed, and opens `http://127.0.0.1:8765`.
+
+The web page has four steps:
+
+1. Confirm resume folder, job requirements workbook, and result workbook paths.
+2. Save model API settings.
+3. Run a lightweight precheck.
+4. Start screening and watch live progress, logs, and final statistics.
+
 ## Manual-Review Mode
 
 Set `model.allow_without_model: true` to process files without model calls.
