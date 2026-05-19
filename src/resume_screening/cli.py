@@ -32,5 +32,20 @@ def run(config: Path = typer.Option(..., "--config", "-c", exists=True, readable
     typer.echo(f"文件名不规范：{stats.non_standard_names}")
 
 
+@app.command()
+def web(
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c"),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8765, "--port"),
+) -> None:
+    """Start the local web interface."""
+    import uvicorn
+
+    from resume_screening.web.app import create_app
+
+    typer.echo(f"启动本地网页：http://{host}:{port}")
+    uvicorn.run(create_app(config_path=config), host=host, port=port)
+
+
 if __name__ == "__main__":
     app()

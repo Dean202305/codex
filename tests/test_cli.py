@@ -24,3 +24,15 @@ def test_cli_module_help_renders() -> None:
 
     assert result.returncode == 0
     assert "run" in result.stdout
+
+
+def test_cli_module_help_includes_web_command() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "resume_screening.cli", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "web" in result.stdout
