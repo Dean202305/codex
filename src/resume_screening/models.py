@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 CATEGORY_RECOMMEND = "推荐初试"
@@ -91,6 +91,17 @@ class PipelineStats:
             self.manual += 1
         elif category == CATEGORY_REJECT:
             self.reject += 1
+
+
+@dataclass(frozen=True)
+class PipelineEvent:
+    type: Literal["run_started", "file_started", "file_completed", "run_completed", "warning"]
+    message: str
+    current: int = 0
+    total: int = 0
+    filename: str = ""
+    category: str = ""
+    stats: PipelineStats | None = None
 
 
 JsonDict = dict[str, Any]

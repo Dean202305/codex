@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -17,6 +18,7 @@ from resume_screening.models import (
     ExtractionResult,
     JobRequirement,
     ParsedFilename,
+    PipelineEvent,
     PipelineStats,
     ScreeningResult,
     ScreeningScores,
@@ -24,8 +26,13 @@ from resume_screening.models import (
 
 
 class ScreeningPipeline:
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, event_handler: Callable[[PipelineEvent], None] | None = None) -> None:
         self.config = config
+        self.event_handler = event_handler
+
+    def _emit(self, event: PipelineEvent) -> None:
+        if self.event_handler is not None:
+            self.event_handler(event)
 
     def run(self) -> PipelineStats:
         jobs = load_job_requirements(self.config.job_book)
@@ -33,8 +40,11 @@ class ScreeningPipeline:
         index = DuplicateIndex.load(self.config.index_path)
         client = None if self.config.model.allow_without_model else ModelClient(self.config.model)
         stats = PipelineStats()
+        files = self._resume_files()
+        self._emit(PipelineEvent("run_started", f"开始处理 {len(files)} 个文件", total=len(files)))
 
-        for path in self._resume_files():
+        for current, path in enumerate(files, start=1):
+            self._emit(PipelineEvent("file_started", f"正在处理：{path.name}", current=current, total=len(files), filename=path.name))
             parsed = parse_resume_filename(path)
             extraction = extract_text(path, self.config.ocr_command)
             duplicate = index.find(extraction.text) if extraction.text else DuplicateMatch(False)
@@ -59,9 +69,21 @@ class ScreeningPipeline:
                 stats.extraction_failures += 1
             if any(item.startswith("模型评估失败") for item in result.missing_information):
                 stats.model_failures += 1
+            self._emit(
+                PipelineEvent(
+                    "file_completed",
+                    f"完成：{path.name} -> {result.category}",
+                    current=current,
+                    total=len(files),
+                    filename=path.name,
+                    category=result.category,
+                    stats=stats,
+                )
+            )
 
         writer.save()
         index.save()
+        self._emit(PipelineEvent("run_completed", "处理完成", current=len(files), total=len(files), stats=stats))
         return stats
 
     def _resume_files(self) -> list[Path]:
