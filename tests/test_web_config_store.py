@@ -58,9 +58,18 @@ def test_save_config_for_web_round_trips_paths_and_model(tmp_path: Path) -> None
 
 
 def test_config_to_public_dict_serializes_paths() -> None:
-    data = load_config_for_web(Path("config.example.yaml"))
+    data = {
+        "resume_dir": Path("/tmp/resumes"),
+        "job_book": Path("/tmp/jobs.xlsx"),
+        "result_book": Path("/tmp/result.xlsx"),
+        "index_path": Path("data/processed_index.json"),
+        "model": {"timeout_seconds": 60},
+    }
 
     public = config_to_public_dict(data)
 
     assert isinstance(public["resume_dir"], str)
+    assert isinstance(public["job_book"], str)
+    assert isinstance(public["result_book"], str)
+    assert isinstance(public["index_path"], str)
     assert isinstance(public["model"]["timeout_seconds"], int)
