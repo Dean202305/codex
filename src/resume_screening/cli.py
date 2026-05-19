@@ -11,6 +11,11 @@ from resume_screening.pipeline import ScreeningPipeline
 app = typer.Typer(no_args_is_help=True)
 
 
+@app.callback()
+def main() -> None:
+    """Resume screening automation."""
+
+
 @app.command()
 def run(config: Path = typer.Option(..., "--config", "-c", exists=True, readable=True)) -> None:
     app_config = load_config(config)
@@ -25,3 +30,7 @@ def run(config: Path = typer.Option(..., "--config", "-c", exists=True, readable
     typer.echo(f"模型失败：{stats.model_failures}")
     typer.echo(f"提取失败/警告：{stats.extraction_failures}")
     typer.echo(f"文件名不规范：{stats.non_standard_names}")
+
+
+if __name__ == "__main__":
+    app()
