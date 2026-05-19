@@ -1,0 +1,62 @@
+from pathlib import Path
+
+from openpyxl import Workbook
+
+from resume_screening.config import AppConfig
+from resume_screening.web.precheck import run_precheck
+
+
+def create_result_book(path: Path) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "多维表格"
+    sheet.append(["ID", "当前阶段", "候选人", "附件", "岗位方向", "来源渠道", "候选人摘要（妙记）", "量化打分", "可投入周期", "面试负责人", "下次动作日", "不推进原因", "推荐/触达人"])
+    workbook.save(path)
+
+
+def create_job_book(path: Path) -> None:
+    workbook = Workbook()
+    template = workbook.active
+    template.title = "模板"
+    job = workbook.create_sheet("财务总监")
+    job.append(["岗位名称", "财务总监", "学历", "本科"])
+    job.append(["工作经验", "8年以上", "具体描述", "负责公司财务管理"])
+    job.append(["1. 核心职责", "预算、核算、风控"])
+    workbook.save(path)
+
+
+def make_config(tmp_path: Path) -> AppConfig:
+    resume_dir = tmp_path / "resumes"
+    resume_dir.mkdir()
+    (resume_dir / "【财务总监_北京 18-28K】郭燕婷 10年以上.pdf").write_text("fake", encoding="utf-8")
+    job_book = tmp_path / "jobs.xlsx"
+    result_book = tmp_path / "result.xlsx"
+    create_job_book(job_book)
+    create_result_book(result_book)
+    return AppConfig.model_validate(
+        {
+            "resume_dir": resume_dir,
+            "job_book": job_book,
+            "result_book": result_book,
+            "index_path": tmp_path / "processed_index.json",
+            "model": {"provider": "openai-compatible", "base_url": "", "api_key": "", "model": "", "allow_without_model": True},
+        }
+    )
+
+
+def test_precheck_passes_for_valid_local_files(tmp_path: Path) -> None:
+    result = run_precheck(make_config(tmp_path))
+
+    assert result.status == "pass"
+    assert result.resume_file_count == 1
+    assert any(item.name == "岗位说明书" and item.status == "pass" for item in result.items)
+
+
+def test_precheck_fails_when_result_book_is_missing(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    config.result_book.unlink()
+
+    result = run_precheck(config)
+
+    assert result.status == "fail"
+    assert any(item.name == "招聘结果表" and item.status == "fail" for item in result.items)
