@@ -37,18 +37,23 @@ def _extract_pdf(path: Path) -> ExtractionResult:
     reader = PdfReader(str(path))
     text = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
     if len(text) < 80:
-        return ExtractionResult(text=text, method="pdf", errors=["PDF文本过短，可能需要OCR人工复核"])
+        return ExtractionResult(text="", method="pdf", errors=["PDF文本过短，可能需要OCR人工复核"])
     return ExtractionResult(text=text, method="pdf")
 
 
 def _extract_image_ocr(path: Path, ocr_command: str) -> ExtractionResult:
-    completed = subprocess.run(
-        [ocr_command, str(path), "stdout", "-l", "chi_sim+eng"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=120,
-    )
+    try:
+        completed = subprocess.run(
+            [ocr_command, str(path), "stdout", "-l", "chi_sim+eng"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except FileNotFoundError:
+        return ExtractionResult(text="", method="ocr", errors=[f"OCR命令不存在：{ocr_command}"])
+    except subprocess.TimeoutExpired:
+        return ExtractionResult(text="", method="ocr", errors=["OCR超时"])
     if completed.returncode != 0:
         return ExtractionResult(text="", method="ocr", errors=[f"OCR失败：{completed.stderr.strip()}"])
     return ExtractionResult(text=completed.stdout.strip(), method="ocr")
@@ -56,7 +61,12 @@ def _extract_image_ocr(path: Path, ocr_command: str) -> ExtractionResult:
 
 def _extract_docx(path: Path) -> ExtractionResult:
     document = Document(str(path))
-    text = "\n".join(paragraph.text for paragraph in document.paragraphs if paragraph.text.strip())
+    parts = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                parts.extend(paragraph.text for paragraph in cell.paragraphs if paragraph.text.strip())
+    text = "\n".join(parts)
     return ExtractionResult(text=text.strip(), method="docx")
 
 
