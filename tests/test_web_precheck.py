@@ -27,8 +27,10 @@ def create_job_book(path: Path) -> None:
 
 def make_config(tmp_path: Path) -> AppConfig:
     resume_dir = tmp_path / "resumes"
-    resume_dir.mkdir()
+    nested = resume_dir / "nested"
+    nested.mkdir(parents=True)
     (resume_dir / "【财务总监_北京 18-28K】郭燕婷 10年以上.pdf").write_text("fake", encoding="utf-8")
+    (nested / "【财务总监_上海 20-30K】李四 8年.txt").write_text("fake", encoding="utf-8")
     job_book = tmp_path / "jobs.xlsx"
     result_book = tmp_path / "result.xlsx"
     create_job_book(job_book)
@@ -48,7 +50,7 @@ def test_precheck_passes_for_valid_local_files(tmp_path: Path) -> None:
     result = run_precheck(make_config(tmp_path))
 
     assert result.status == "pass"
-    assert result.resume_file_count == 1
+    assert result.resume_file_count == 2
     assert any(item.name == "岗位说明书" and item.status == "pass" for item in result.items)
 
 

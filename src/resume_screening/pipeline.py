@@ -8,7 +8,8 @@ import httpx
 from resume_screening.config import AppConfig
 from resume_screening.duplicates import DuplicateIndex
 from resume_screening.excel_writer import ResultWorkbookWriter
-from resume_screening.extractors import SUPPORTED_EXTENSIONS, extract_text
+from resume_screening.extractors import extract_text
+from resume_screening.file_scanner import iter_candidate_files
 from resume_screening.filename_parser import parse_resume_filename
 from resume_screening.job_requirements import load_job_requirements
 from resume_screening.model_client import ModelClient
@@ -87,16 +88,7 @@ class ScreeningPipeline:
         return stats
 
     def _resume_files(self) -> list[Path]:
-        skip = {self.config.job_book.resolve(), self.config.result_book.resolve()}
-        files: list[Path] = []
-        for path in self.config.resume_dir.iterdir():
-            if not path.is_file():
-                continue
-            if path.resolve() in skip:
-                continue
-            if path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                files.append(path)
-        return sorted(files)
+        return iter_candidate_files(self.config.resume_dir, self.config.job_book, self.config.result_book)
 
     def _screen(
         self,

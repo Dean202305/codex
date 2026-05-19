@@ -164,7 +164,7 @@ export function App() {
           {!precheck && <button className="primary" onClick={runPrecheck}>开始预检</button>}
           {precheck && (
             <div className="checks">
-              <div className={`summary ${precheck.status}`}>支持格式简历：{precheck.resume_file_count} 个</div>
+              <div className={`summary ${precheck.status}`}>待处理文件：{precheck.resume_file_count} 个</div>
               {precheck.items.map((item) => <div className={`check ${item.status}`} key={item.name}><strong>{item.name}</strong><span>{item.message}</span></div>)}
               <button className="primary" onClick={startRun}><Play size={18} />开始筛选</button>
             </div>

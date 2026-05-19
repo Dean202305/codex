@@ -21,6 +21,7 @@ The tool appends rows to `/Users/mac/Downloads/小A科技（北京）组织招�
 It rereads `/Users/mac/Downloads/小A自动化岗位说明书.xlsx` on every run.
 Historical rows are preserved.
 Duplicate resume content is still appended and marked red.
+The resume folder is scanned recursively. All visible regular files are processed; unsupported formats are appended as `待人工二筛` with an extraction note.
 
 ## Web Interface
 

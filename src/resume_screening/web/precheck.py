@@ -7,7 +7,7 @@ from typing import Literal
 from openpyxl import load_workbook
 
 from resume_screening.config import AppConfig
-from resume_screening.extractors import SUPPORTED_EXTENSIONS
+from resume_screening.file_scanner import iter_candidate_files
 from resume_screening.job_requirements import load_job_requirements
 
 CheckStatus = Literal["pass", "warning", "fail"]
@@ -26,21 +26,6 @@ class PrecheckResult:
     resume_file_count: int
     usable_job_sheet_count: int
     items: list[PrecheckItem] = field(default_factory=list)
-
-
-def _supported_resume_count(resume_dir: Path, job_book: Path, result_book: Path) -> int:
-    if not resume_dir.exists() or not resume_dir.is_dir():
-        return 0
-    skip = {job_book.resolve(), result_book.resolve()}
-    count = 0
-    for path in resume_dir.iterdir():
-        if not path.is_file():
-            continue
-        if path.resolve() in skip:
-            continue
-        if path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            count += 1
-    return count
 
 
 def _is_writable_file(path: Path) -> bool:
@@ -65,13 +50,13 @@ def _overall_status(items: list[PrecheckItem]) -> CheckStatus:
 def run_precheck(config: AppConfig) -> PrecheckResult:
     items: list[PrecheckItem] = []
 
-    resume_count = _supported_resume_count(config.resume_dir, config.job_book, config.result_book)
+    resume_count = len(iter_candidate_files(config.resume_dir, config.job_book, config.result_book))
     if not config.resume_dir.exists() or not config.resume_dir.is_dir():
         items.append(PrecheckItem("简历文件夹", "fail", f"文件夹不存在：{config.resume_dir}"))
     elif resume_count == 0:
-        items.append(PrecheckItem("简历文件夹", "warning", "没有找到支持格式的简历文件"))
+        items.append(PrecheckItem("简历文件夹", "warning", "没有找到待处理文件"))
     else:
-        items.append(PrecheckItem("简历文件夹", "pass", f"找到 {resume_count} 个支持格式文件"))
+        items.append(PrecheckItem("简历文件夹", "pass", f"找到 {resume_count} 个待处理文件"))
 
     usable_jobs = 0
     if not config.job_book.exists():

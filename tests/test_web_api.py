@@ -26,8 +26,10 @@ def create_job_book(path: Path) -> None:
 
 def valid_payload(tmp_path: Path) -> dict:
     resume_dir = tmp_path / "resumes"
-    resume_dir.mkdir()
+    nested = resume_dir / "nested"
+    nested.mkdir(parents=True)
     (resume_dir / "【财务总监_北京 18-28K】郭燕婷 10年以上.pdf").write_text("fake", encoding="utf-8")
+    (nested / "【财务总监_上海 20-30K】李四 8年.txt").write_text("fake", encoding="utf-8")
     job_book = tmp_path / "jobs.xlsx"
     result_book = tmp_path / "result.xlsx"
     create_job_book(job_book)
@@ -65,5 +67,5 @@ def test_precheck_endpoint_returns_items(tmp_path: Path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["status"] in {"pass", "warning"}
-    assert body["resume_file_count"] == 1
+    assert body["resume_file_count"] == 2
     assert body["items"]
