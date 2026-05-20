@@ -9,6 +9,8 @@ from resume_screening.models import JobRequirement
 
 PLACEHOLDER_MARKERS = ("XXXX", "具体描述", "无则填", "年       月")
 REQUIRED_FIELDS = ("岗位名称", "学历", "工作经验", "具体描述", "1. 核心职责")
+TABULAR_REQUIRED_FIELDS = ("岗位名称",)
+TABULAR_DETAIL_FIELDS = ("岗位jd", "核心职责1", "核心职责2", "核心职责3", "工作经验要求", "学历要求")
 
 
 def _clean(value: object) -> str:
@@ -48,6 +50,47 @@ def _missing_required(fields: dict[str, str]) -> list[str]:
     return missing
 
 
+def _is_tabular_sheet(rows: list[list[str]]) -> bool:
+    if not rows:
+        return False
+    header = rows[0]
+    return "岗位名称" in header and any(name in header for name in ("岗位别名", "岗位jd", "核心职责1", "学历要求"))
+
+
+def _tabular_missing_required(fields: dict[str, str]) -> list[str]:
+    missing = [field_name for field_name in TABULAR_REQUIRED_FIELDS if _is_placeholder(fields.get(field_name, ""))]
+    if not any(not _is_placeholder(fields.get(field_name, "")) for field_name in TABULAR_DETAIL_FIELDS):
+        missing.append("岗位要求")
+    return missing
+
+
+def _row_raw_text(fields: dict[str, str]) -> str:
+    return "\n".join(f"{key}: {value}" for key, value in fields.items() if value)
+
+
+def _load_tabular_jobs(sheet_name: str, rows: list[list[str]]) -> dict[str, JobRequirement]:
+    header = rows[0]
+    jobs: dict[str, JobRequirement] = {}
+    for row in rows[1:]:
+        fields = {
+            header[index]: row[index]
+            for index in range(min(len(header), len(row)))
+            if header[index] and row[index]
+        }
+        job_name = fields.get("岗位名称", "").strip()
+        if not job_name:
+            continue
+        missing = _tabular_missing_required(fields)
+        jobs[job_name] = JobRequirement(
+            sheet_name=sheet_name,
+            fields=fields,
+            raw_text=_row_raw_text(fields),
+            is_complete=len(missing) == 0,
+            missing_fields=missing,
+        )
+    return jobs
+
+
 def load_job_requirements(path: Path) -> dict[str, JobRequirement]:
     workbook = load_workbook(path, data_only=True)
     jobs: dict[str, JobRequirement] = {}
@@ -56,6 +99,9 @@ def load_job_requirements(path: Path) -> dict[str, JobRequirement]:
             continue
         sheet = workbook[sheet_name]
         rows = [[_clean(cell) for cell in row] for row in sheet.iter_rows(values_only=True)]
+        if _is_tabular_sheet(rows):
+            jobs.update(_load_tabular_jobs(sheet_name, rows))
+            continue
         fields = _extract_sheet_fields(rows)
         missing = _missing_required(fields)
         raw_text = _raw_text(rows)

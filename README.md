@@ -31,6 +31,7 @@ Historical rows are preserved.
 Duplicate resume content is still appended and marked red.
 The resume folder is scanned recursively. All visible regular files are processed; unsupported formats are appended as `待人工二筛` with an extraction note.
 Supported filename formats include `【岗位_地点 薪资】姓名 工龄.pdf` and `岗位_地点_薪资_姓名_工龄.pdf`.
+The job workbook can use the original one-sheet-per-job layout or a tabular layout where each row contains a `岗位名称`.
 
 ## Web Interface
 

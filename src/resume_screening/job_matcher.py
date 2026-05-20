@@ -31,14 +31,34 @@ def resolve_job(
 
     normalized_name = _normalize_job_name(parsed.job_name)
     for job in jobs.values():
-        field_name = job.fields.get("岗位名称", "")
-        if field_name and _normalize_job_name(field_name) == normalized_name:
-            note = ""
-            if job.sheet_name != parsed.job_name:
-                note = f"岗位名称匹配：{parsed.job_name} -> {job.sheet_name}"
-            return JobMatch(job, note)
+        for candidate in _job_candidate_names(job):
+            normalized_candidate = _normalize_job_name(candidate)
+            if normalized_candidate and normalized_candidate == normalized_name:
+                note = ""
+                if job.sheet_name != parsed.job_name:
+                    note = f"岗位名称匹配：{parsed.job_name} -> {job.sheet_name}"
+                return JobMatch(job, note)
+
+    for job in jobs.values():
+        for candidate in _job_candidate_names(job):
+            normalized_candidate = _normalize_job_name(candidate)
+            if len(normalized_candidate) < 2:
+                continue
+            if normalized_candidate in normalized_name or normalized_name in normalized_candidate:
+                note = ""
+                if job.sheet_name != parsed.job_name:
+                    note = f"岗位名称匹配：{parsed.job_name} -> {job.sheet_name}"
+                return JobMatch(job, note)
 
     return JobMatch(None)
+
+
+def _job_candidate_names(job: JobRequirement) -> list[str]:
+    names = [job.sheet_name, job.fields.get("岗位名称", "")]
+    aliases = job.fields.get("岗位别名", "")
+    if aliases:
+        names.extend(part.strip() for part in aliases.replace("/", "、").replace(",", "、").split("、"))
+    return [name for name in names if name]
 
 
 def _normalize_job_name(value: str) -> str:

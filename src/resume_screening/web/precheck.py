@@ -71,9 +71,9 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
             jobs = load_job_requirements(config.job_book)
             usable_jobs = sum(1 for job in jobs.values() if job.is_complete)
             if usable_jobs == 0:
-                items.append(PrecheckItem("岗位说明书", "warning", "未找到完整岗位说明书 sheet"))
+                items.append(PrecheckItem("岗位说明书", "warning", "未找到完整岗位要求"))
             else:
-                items.append(PrecheckItem("岗位说明书", "pass", f"找到 {usable_jobs} 个完整岗位 sheet"))
+                items.append(PrecheckItem("岗位说明书", "pass", f"找到 {usable_jobs} 个完整岗位要求"))
         except Exception as exc:
             items.append(PrecheckItem("岗位说明书", "fail", f"读取失败：{exc}"))
 

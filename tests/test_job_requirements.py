@@ -45,3 +45,44 @@ def test_load_job_requirements_ignores_template_and_detects_completeness(tmp_pat
     assert "负责AI产品规划" in jobs["产品总监"].raw_text
     assert jobs["算法"].is_complete is False
     assert "岗位名称" in jobs["算法"].missing_fields
+
+
+def test_load_job_requirements_supports_tabular_job_rows(tmp_path: Path) -> None:
+    path = tmp_path / "jobs.xlsx"
+    workbook = Workbook()
+    template = workbook.active
+    template.title = "模板"
+    sheet = workbook.create_sheet("后端开发")
+    sheet.append(["岗位名称", "岗位别名", "岗位性质", "学历要求", "工作年限要求", "工作经验要求", "核心职责1", "核心职责2", "岗位jd"])
+    sheet.append([
+        "后端开发",
+        "Java开发",
+        "实习",
+        "本科、硕士、博士",
+        "26、27届毕业生",
+        "0到1年",
+        "Java后端开发",
+        "Spring Cloud / Spring Boot",
+        "负责医者核心业务后端开发。",
+    ])
+    sheet.append([
+        "AI产品经理",
+        "AI交互产品经理",
+        "实习或全职",
+        "本科、硕士、博士",
+        "26、27届毕业生",
+        "0-2年",
+        "海外TOC产品",
+        "AI交互设计",
+        "负责ToC端AI交互产品规划。",
+    ])
+    workbook.save(path)
+
+    jobs = load_job_requirements(path)
+
+    assert jobs["后端开发"].is_complete is True
+    assert jobs["后端开发"].sheet_name == "后端开发"
+    assert jobs["后端开发"].fields["岗位别名"] == "Java开发"
+    assert "Spring Cloud" in jobs["后端开发"].raw_text
+    assert jobs["AI产品经理"].is_complete is True
+    assert "AI交互产品经理" in jobs["AI产品经理"].raw_text
