@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -11,6 +12,7 @@ from resume_screening.excel_writer import ResultWorkbookWriter
 from resume_screening.extractors import extract_text
 from resume_screening.file_scanner import iter_candidate_files
 from resume_screening.filename_parser import parse_resume_filename
+from resume_screening.job_matcher import resolve_job
 from resume_screening.job_requirements import load_job_requirements
 from resume_screening.model_client import ModelClient
 from resume_screening.models import (
@@ -113,20 +115,24 @@ class ScreeningPipeline:
             missing.extend(extraction.errors or ["无法提取简历正文"])
             return manual_result("无法提取简历正文，需人工确认", missing)
 
-        job = jobs.get(parsed.job_name)
-        if not job:
+        job_match = resolve_job(parsed, jobs, self.config.job_aliases)
+        if job_match.note:
+            missing.append(job_match.note)
+        if not job_match.job:
             missing.append("岗位名称未匹配到岗位说明书sheet")
+            if jobs:
+                missing.append(f"可用岗位sheet：{'、'.join(jobs)}")
             return manual_result("岗位名称未匹配到岗位说明书sheet，需人工确认", missing)
+        job = job_match.job
         if not job.is_complete:
-            missing.append("岗位要求不完整，需人工确认")
+            missing.append("岗位要求不完整")
             missing.extend(job.missing_fields)
-            return manual_result("岗位要求不完整，需人工确认", missing)
         if client is None:
             missing.append("模型配置缺失，已按人工二筛处理")
             return manual_result("模型配置缺失，需人工确认", missing)
 
         try:
-            return client.evaluate(
+            result = client.evaluate(
                 resume_text=extraction.text,
                 job=job,
                 filename_metadata={
@@ -135,8 +141,10 @@ class ScreeningPipeline:
                     "salary_range": parsed.salary_range,
                     "candidate_name": parsed.candidate_name,
                     "work_experience": parsed.work_experience,
+                    "matched_job_sheet": job.sheet_name,
                 },
             )
+            return _append_missing_information(result, missing)
         except httpx.TimeoutException:
             print(f"模型评估失败：请求超时 - {parsed.path.name}")
             return manual_result("模型评估失败，需人工确认", missing + ["模型评估失败：请求超时"])
@@ -158,3 +166,9 @@ def manual_result(reason: str, missing: list[str]) -> ScreeningResult:
         reject_reason="",
         scores=ScreeningScores(0, 0, 0, 0, 0, 0, 0, 0),
     )
+
+
+def _append_missing_information(result: ScreeningResult, missing: list[str]) -> ScreeningResult:
+    merged = [item for item in [*missing, *result.missing_information] if item]
+    deduped = list(dict.fromkeys(merged))
+    return replace(result, missing_information=deduped)

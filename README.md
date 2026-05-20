@@ -11,6 +11,14 @@ cp config.example.yaml config.yaml
 
 Edit `config.yaml` and set `model.base_url`, `model.api_key`, and `model.model`.
 
+If the resume filename job name differs from the job workbook sheet name, add aliases:
+
+```yaml
+job_aliases:
+  后端开发工程师: "全栈"
+  后端开发实习岗: "全栈"
+```
+
 ## Run
 
 ```bash
@@ -22,6 +30,7 @@ It rereads `/Users/mac/Downloads/小A自动化岗位说明书.xlsx` on every run
 Historical rows are preserved.
 Duplicate resume content is still appended and marked red.
 The resume folder is scanned recursively. All visible regular files are processed; unsupported formats are appended as `待人工二筛` with an extraction note.
+Supported filename formats include `【岗位_地点 薪资】姓名 工龄.pdf` and `岗位_地点_薪资_姓名_工龄.pdf`.
 
 ## Web Interface
 
@@ -31,7 +40,7 @@ On first launch, the script creates or reuses `.venv`, installs the tool, create
 
 The web page has four steps:
 
-1. Confirm resume folder, job requirements workbook, and result workbook paths.
+1. Confirm resume folder, job requirements workbook, result workbook paths, and optional job aliases.
 2. Save model API settings.
 3. Run a lightweight precheck.
 4. Start screening and watch live progress, logs, and final statistics.

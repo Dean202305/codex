@@ -62,3 +62,19 @@ def test_precheck_fails_when_result_book_is_missing(tmp_path: Path) -> None:
 
     assert result.status == "fail"
     assert any(item.name == "招聘结果表" and item.status == "fail" for item in result.items)
+
+
+def test_precheck_warns_when_resume_jobs_do_not_match_job_sheets(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    for file_path in config.resume_dir.rglob("*"):
+        if file_path.is_file():
+            file_path.unlink()
+    (config.resume_dir / "后端开发工程师_北京_12-18K_张松_3年.pdf").write_text("fake", encoding="utf-8")
+
+    result = run_precheck(config)
+
+    assert result.status == "warning"
+    assert any(
+        item.name == "岗位匹配" and item.status == "warning" and "后端开发工程师" in item.message
+        for item in result.items
+    )

@@ -45,6 +45,7 @@ class AppConfig(BaseModel):
     resume_dir: Path
     job_book: Path
     result_book: Path
+    job_aliases: dict[str, str] = Field(default_factory=dict)
     default_source_channel: str = ""
     default_interviewer: str = ""
     index_path: Path = Path("data/processed_index.json")

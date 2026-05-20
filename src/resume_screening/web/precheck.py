@@ -8,7 +8,10 @@ from openpyxl import load_workbook
 
 from resume_screening.config import AppConfig
 from resume_screening.file_scanner import iter_candidate_files
+from resume_screening.filename_parser import parse_resume_filename
+from resume_screening.job_matcher import resolve_job
 from resume_screening.job_requirements import load_job_requirements
+from resume_screening.models import JobRequirement
 
 CheckStatus = Literal["pass", "warning", "fail"]
 
@@ -50,7 +53,8 @@ def _overall_status(items: list[PrecheckItem]) -> CheckStatus:
 def run_precheck(config: AppConfig) -> PrecheckResult:
     items: list[PrecheckItem] = []
 
-    resume_count = len(iter_candidate_files(config.resume_dir, config.job_book, config.result_book))
+    resume_files = iter_candidate_files(config.resume_dir, config.job_book, config.result_book)
+    resume_count = len(resume_files)
     if not config.resume_dir.exists() or not config.resume_dir.is_dir():
         items.append(PrecheckItem("简历文件夹", "fail", f"文件夹不存在：{config.resume_dir}"))
     elif resume_count == 0:
@@ -58,6 +62,7 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
     else:
         items.append(PrecheckItem("简历文件夹", "pass", f"找到 {resume_count} 个待处理文件"))
 
+    jobs = {}
     usable_jobs = 0
     if not config.job_book.exists():
         items.append(PrecheckItem("岗位说明书", "fail", f"文件不存在：{config.job_book}"))
@@ -71,6 +76,20 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
                 items.append(PrecheckItem("岗位说明书", "pass", f"找到 {usable_jobs} 个完整岗位 sheet"))
         except Exception as exc:
             items.append(PrecheckItem("岗位说明书", "fail", f"读取失败：{exc}"))
+
+    if jobs and resume_files:
+        unmatched_jobs = _unmatched_resume_jobs(resume_files, jobs, config.job_aliases)
+        if unmatched_jobs:
+            preview = "、".join(f"{name}({count})" for name, count in unmatched_jobs[:6])
+            items.append(
+                PrecheckItem(
+                    "岗位匹配",
+                    "warning",
+                    f"{sum(count for _, count in unmatched_jobs)} 个文件岗位未匹配岗位说明书：{preview}。可补充对应sheet，或在 config.yaml 的 job_aliases 中配置映射。",
+                )
+            )
+        else:
+            items.append(PrecheckItem("岗位匹配", "pass", "文件名岗位均已匹配到岗位说明书"))
 
     if not config.result_book.exists():
         items.append(PrecheckItem("招聘结果表", "fail", f"文件不存在：{config.result_book}"))
@@ -103,3 +122,18 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
         usable_job_sheet_count=usable_jobs,
         items=items,
     )
+
+
+def _unmatched_resume_jobs(
+    resume_files: list[Path],
+    jobs: dict[str, JobRequirement],
+    aliases: dict[str, str],
+) -> list[tuple[str, int]]:
+    counts: dict[str, int] = {}
+    for path in resume_files:
+        parsed = parse_resume_filename(path)
+        if not parsed.job_name:
+            continue
+        if resolve_job(parsed, jobs, aliases).job is None:
+            counts[parsed.job_name] = counts.get(parsed.job_name, 0) + 1
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))

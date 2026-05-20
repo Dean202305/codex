@@ -7,6 +7,7 @@ const emptyConfig = {
   resume_dir: "",
   job_book: "",
   result_book: "",
+  job_aliases: {},
   default_source_channel: "",
   default_interviewer: "",
   index_path: "data/processed_index.json",
@@ -38,9 +39,29 @@ function mergeConfig(config) {
   return { ...emptyConfig, ...config, model: { ...emptyConfig.model, ...config.model } };
 }
 
+function formatJobAliases(aliases = {}) {
+  return Object.entries(aliases).map(([source, target]) => `${source}=${target}`).join("\n");
+}
+
+function parseJobAliases(text) {
+  const aliases = {};
+  text.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const separator = trimmed.includes("=") ? "=" : ":";
+    const index = trimmed.indexOf(separator);
+    if (index <= 0) return;
+    const source = trimmed.slice(0, index).trim();
+    const target = trimmed.slice(index + 1).trim();
+    if (source && target) aliases[source] = target;
+  });
+  return aliases;
+}
+
 export function App() {
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState(emptyConfig);
+  const [jobAliasText, setJobAliasText] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [precheck, setPrecheck] = useState(null);
@@ -49,7 +70,11 @@ export function App() {
 
   useEffect(() => {
     requestJson("/api/config")
-      .then((body) => setConfig(mergeConfig(body.config)))
+      .then((body) => {
+        const merged = mergeConfig(body.config);
+        setConfig(merged);
+        setJobAliasText(formatJobAliases(merged.job_aliases));
+      })
       .catch((exc) => setError(exc.message));
   }, []);
 
@@ -80,8 +105,10 @@ export function App() {
     setError("");
     setNotice("");
     try {
-      const body = await requestJson("/api/config", { method: "POST", body: JSON.stringify(config) });
-      setConfig(mergeConfig(body.config));
+      const body = await requestJson("/api/config", { method: "POST", body: JSON.stringify({ ...config, job_aliases: parseJobAliases(jobAliasText) }) });
+      const merged = mergeConfig(body.config);
+      setConfig(merged);
+      setJobAliasText(formatJobAliases(merged.job_aliases));
       setNotice("配置已保存到本地 config.yaml");
     } catch (exc) {
       setError(exc.message);
@@ -136,6 +163,7 @@ export function App() {
           <label>简历文件夹<input value={config.resume_dir} onChange={(event) => updateField("resume_dir", event.target.value)} /></label>
           <label>岗位说明书<input value={config.job_book} onChange={(event) => updateField("job_book", event.target.value)} /></label>
           <label>招聘结果表<input value={config.result_book} onChange={(event) => updateField("result_book", event.target.value)} /></label>
+          <label>岗位别名映射<textarea value={jobAliasText} onChange={(event) => setJobAliasText(event.target.value)} placeholder={"后端开发工程师=全栈\n后端开发实习岗=全栈"} /></label>
           <div className="actions">
             <button onClick={saveConfig}><Save size={18} />保存配置</button>
             <button className="primary" onClick={() => setStep(1)}>下一步</button>

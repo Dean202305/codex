@@ -56,6 +56,68 @@ def test_parse_model_response_rejects_unknown_category() -> None:
         )
 
 
+def test_parse_model_response_accepts_common_chinese_score_keys_and_reason_list() -> None:
+    result = parse_model_response(
+        {
+            "category": "推荐初试",
+            "overall_score": 8.1,
+            "summary": "候选人具备后端开发经验。",
+            "screening_reason": ["硬性条件匹配", "项目经验相关"],
+            "missing_information": "",
+            "reject_reason": "",
+            "scores": {
+                "能力": 8,
+                "自我认知": 6,
+                "意愿": 7,
+                "学习能力": 8,
+                "岗位匹配度": 8.5,
+                "经验匹配": 8.5,
+                "技能匹配": 8,
+                "稳定性/风险": 7.8,
+            },
+        }
+    )
+
+    assert result.screening_reason == "硬性条件匹配；项目经验相关"
+    assert result.missing_information == []
+    assert result.scores.job_fit == 8.5
+    assert result.scores.stability_risk == 7.8
+
+
+def test_parse_model_response_accepts_observed_alternate_score_keys() -> None:
+    result = parse_model_response(
+        {
+            "category": "推荐初试",
+            "overall_score": 8.5,
+            "summary": "候选人3年Java后端经验。",
+            "screening_reason": ["工作年限匹配", "后端核心技术匹配"],
+            "missing_information": ["薪资期望需确认"],
+            "reject_reason": "",
+            "scores": {
+                "experience_match": 8.5,
+                "skill_match": 9.0,
+                "project_depth": 8.8,
+                "education_match": 8.0,
+                "communication_language": 7.5,
+                "stability_risk": 8.2,
+                "location_match": 8.5,
+                "job_info_completeness": 5.5,
+            },
+        }
+    )
+
+    assert result.category == "推荐初试"
+    assert result.scores.ability == 8.8
+    assert result.scores.learning_ability == 8.8
+    assert result.scores.experience_fit == 8.5
+    assert result.scores.skill_fit == 9.0
+    assert result.scores.stability_risk == 8.2
+    assert result.scores.ego == 8.5
+    assert result.scores.desire == 8.5
+    assert result.scores.job_fit == 8.67
+    assert any("自我认知" in item for item in result.missing_information)
+
+
 def test_build_prompt_replaces_invalid_unicode_surrogates() -> None:
     client = ModelClient(
         ModelConfig(
