@@ -57,6 +57,31 @@ def test_save_config_for_web_round_trips_paths_and_model(tmp_path: Path) -> None
     assert raw["default_source_channel"] == "Boss直聘"
 
 
+def test_save_config_for_web_persists_normalized_paths(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    resume_dir = tmp_path / "Resume Folder"
+    resume_dir.mkdir()
+    job_book = tmp_path / "jobs.xlsx"
+    result_book = tmp_path / "result.xlsx"
+    job_book.write_text("fake", encoding="utf-8")
+    result_book.write_text("fake", encoding="utf-8")
+
+    save_config_for_web(
+        config_path,
+        {
+            "resume_dir": f" {resume_dir}",
+            "job_book": f"'{job_book}'",
+            "result_book": f'"{result_book}"',
+            "model": {"provider": "openai-compatible", "base_url": "", "api_key": "", "model": "", "allow_without_model": True},
+        },
+    )
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert raw["resume_dir"] == str(resume_dir)
+    assert raw["job_book"] == str(job_book)
+    assert raw["result_book"] == str(result_book)
+
+
 def test_config_to_public_dict_serializes_paths() -> None:
     data = {
         "resume_dir": Path("/tmp/resumes"),

@@ -1,8 +1,9 @@
 from pathlib import Path
+import shlex
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class CategoryConfig(BaseModel):
@@ -52,6 +53,28 @@ class AppConfig(BaseModel):
     ocr_command: str = "tesseract"
     model: ModelConfig
     screening: ScreeningConfig = Field(default_factory=ScreeningConfig)
+
+    @field_validator("resume_dir", "job_book", "result_book", "index_path", mode="before")
+    @classmethod
+    def normalize_path_fields(cls, value: object) -> object:
+        return normalize_path_value(value)
+
+
+def normalize_path_value(value: object) -> object:
+    if isinstance(value, Path) or not isinstance(value, str):
+        return value
+    cleaned = value.strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"'}:
+        cleaned = cleaned[1:-1].strip()
+    try:
+        parts = shlex.split(cleaned)
+    except ValueError:
+        parts = []
+    if len(parts) == 1:
+        cleaned = parts[0]
+    else:
+        cleaned = cleaned.replace("\\ ", " ")
+    return Path(cleaned).expanduser()
 
 
 def load_config(path: Path) -> AppConfig:

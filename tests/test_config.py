@@ -49,6 +49,33 @@ def test_load_config_reads_paths_and_model_settings(tmp_path: Path) -> None:
     assert loaded.screening.categories.manual == "待人工二筛"
 
 
+def test_config_normalizes_common_copied_path_formats(tmp_path: Path) -> None:
+    resume_dir = tmp_path / "Resume Folder"
+    resume_dir.mkdir()
+
+    config = AppConfig.model_validate(
+        {
+            "resume_dir": f" '{resume_dir}' ",
+            "job_book": f'"{tmp_path / "jobs.xlsx"}"',
+            "result_book": str(tmp_path / "result.xlsx"),
+            "index_path": str(tmp_path / "Data Folder" / "index.json").replace(" ", "\\ "),
+            "model": {
+                "provider": "openai-compatible",
+                "base_url": "",
+                "api_key": "",
+                "model": "",
+                "timeout_seconds": 60,
+                "temperature": 0.1,
+                "allow_without_model": True,
+            },
+        }
+    )
+
+    assert config.resume_dir == resume_dir
+    assert config.job_book == tmp_path / "jobs.xlsx"
+    assert config.index_path == tmp_path / "Data Folder" / "index.json"
+
+
 def test_config_rejects_missing_model_when_manual_mode_disabled() -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate(

@@ -68,9 +68,17 @@ def load_config_for_web(path: Path) -> dict[str, Any]:
 def save_config_for_web(path: Path, data: dict[str, Any]) -> AppConfig:
     merged = _deep_merge(DEFAULT_CONFIG, data)
     validated = AppConfig.model_validate(merged)
+    merged = _serialize_validated_paths(merged, validated)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(merged, allow_unicode=True, sort_keys=False), encoding="utf-8")
     return validated
+
+
+def _serialize_validated_paths(data: dict[str, Any], validated: AppConfig) -> dict[str, Any]:
+    serialized = deepcopy(data)
+    for key in ("resume_dir", "job_book", "result_book", "index_path"):
+        serialized[key] = str(getattr(validated, key))
+    return serialized
 
 
 def config_to_public_dict(data: dict[str, Any]) -> dict[str, Any]:
