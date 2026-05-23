@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
 from typing import Literal, Protocol
 from uuid import uuid4
 
@@ -13,7 +13,7 @@ from resume_screening.config import AppConfig, load_config
 from resume_screening.models import PipelineEvent, PipelineStats
 from resume_screening.pipeline import ScreeningPipeline
 
-RunState = Literal["queued", "running", "completed", "failed"]
+RunState = Literal["queued", "running", "stopping", "completed", "cancelled", "failed"]
 
 
 class RunnablePipeline(Protocol):
@@ -70,13 +70,14 @@ class RunManager:
     def __init__(
         self,
         config_path: Path,
-        pipeline_factory: Callable[[AppConfig, Callable[[PipelineEvent], None]], RunnablePipeline] | None = None,
+        pipeline_factory: Callable[[AppConfig, Callable[[PipelineEvent], None], Callable[[], bool]], RunnablePipeline] | None = None,
     ) -> None:
         self.config_path = config_path
-        self.pipeline_factory = pipeline_factory or (lambda config, handler: ScreeningPipeline(config, event_handler=handler))
+        self.pipeline_factory = pipeline_factory or (lambda config, handler, should_stop: ScreeningPipeline(config, event_handler=handler, should_stop=should_stop))
         self._lock = Lock()
         self._runs: dict[str, RunSnapshot] = {}
         self._threads: dict[str, Thread] = {}
+        self._stop_events: dict[str, Event] = {}
         self._active_run_id: str | None = None
 
     def start(self) -> RunSnapshot:
@@ -89,9 +90,21 @@ class RunManager:
             snapshot = RunSnapshot(run_id=run_id, state="queued")
             self._runs[run_id] = snapshot
             self._active_run_id = run_id
+            self._stop_events[run_id] = Event()
             thread = Thread(target=self._run_worker, args=(run_id,), daemon=True)
             self._threads[run_id] = thread
             thread.start()
+            return deepcopy(snapshot)
+
+    def cancel(self, run_id: str) -> RunSnapshot:
+        with self._lock:
+            if run_id not in self._runs:
+                raise KeyError(run_id)
+            snapshot = self._runs[run_id]
+            if snapshot.state in {"queued", "running", "stopping"}:
+                self._stop_events[run_id].set()
+                snapshot.state = "stopping"
+                self._append_log(run_id, "warning", "已请求停止筛选任务")
             return deepcopy(snapshot)
 
     def get(self, run_id: str) -> RunSnapshot:
@@ -125,12 +138,16 @@ class RunManager:
                 self._runs[run_id].state = "running"
                 self._append_log(run_id, "info", "筛选任务已启动")
             config = load_config(self.config_path)
-            pipeline = self.pipeline_factory(config, lambda event: self._handle_event(run_id, event))
+            stop_event = self._stop_events[run_id]
+            pipeline = self.pipeline_factory(config, lambda event: self._handle_event(run_id, event), stop_event.is_set)
             stats = pipeline.run()
             with self._lock:
-                self._runs[run_id].state = "completed"
+                self._runs[run_id].state = "cancelled" if stop_event.is_set() else "completed"
                 self._runs[run_id].stats = _stats_dict(stats)
-                self._append_log(run_id, "info", "筛选任务已完成")
+                if stop_event.is_set():
+                    self._append_log(run_id, "warning", "筛选任务已停止")
+                else:
+                    self._append_log(run_id, "info", "筛选任务已完成")
                 self._active_run_id = None
         except Exception as exc:
             with self._lock:

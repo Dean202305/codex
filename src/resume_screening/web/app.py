@@ -27,9 +27,9 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def create_app(config_path: Path = Path("config.yaml"), static_dir: Path | None = None) -> FastAPI:
+def create_app(config_path: Path = Path("config.yaml"), static_dir: Path | None = None, run_manager: RunManager | None = None) -> FastAPI:
     app = FastAPI(title="Resume Screening Web")
-    manager = RunManager(config_path)
+    manager = run_manager or RunManager(config_path)
     static_root = static_dir or Path(__file__).parent / "static"
 
     @app.get("/api/config")
@@ -64,6 +64,13 @@ def create_app(config_path: Path = Path("config.yaml"), static_dir: Path | None 
     def get_run(run_id: str) -> dict[str, Any]:
         try:
             return {"run": _jsonable(manager.get(run_id))}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+
+    @app.post("/api/runs/{run_id}/cancel")
+    def cancel_run(run_id: str) -> dict[str, Any]:
+        try:
+            return {"run": _jsonable(manager.cancel(run_id))}
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 

@@ -30,9 +30,15 @@ from resume_screening.text_utils import sanitize_text
 
 
 class ScreeningPipeline:
-    def __init__(self, config: AppConfig, event_handler: Callable[[PipelineEvent], None] | None = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        event_handler: Callable[[PipelineEvent], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> None:
         self.config = config
         self.event_handler = event_handler
+        self.should_stop = should_stop or (lambda: False)
 
     def _emit(self, event: PipelineEvent) -> None:
         if self.event_handler is not None:
@@ -47,7 +53,11 @@ class ScreeningPipeline:
         files = self._resume_files()
         self._emit(PipelineEvent("run_started", f"开始处理 {len(files)} 个文件", total=len(files)))
 
+        stopped = False
         for current, path in enumerate(files, start=1):
+            if self.should_stop():
+                stopped = True
+                break
             self._emit(PipelineEvent("file_started", f"正在处理：{path.name}", current=current, total=len(files), filename=path.name))
             parsed = parse_resume_filename(path)
             extraction = extract_text(path, self.config.ocr_command)
@@ -90,9 +100,13 @@ class ScreeningPipeline:
                 )
             )
 
+        stopped = stopped or self.should_stop()
         writer.save()
         index.save()
-        self._emit(PipelineEvent("run_completed", "处理完成", current=len(files), total=len(files), stats=stats))
+        if stopped:
+            self._emit(PipelineEvent("run_cancelled", "筛选任务已停止，已保存已完成结果", current=stats.processed, total=len(files), stats=stats))
+        else:
+            self._emit(PipelineEvent("run_completed", "处理完成", current=len(files), total=len(files), stats=stats))
         return stats
 
     def _resume_files(self) -> list[Path]:

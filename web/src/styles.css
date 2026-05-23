@@ -67,6 +67,17 @@ h2 {
   color: #fff !important;
 }
 
+.danger-button {
+  background: #b42318 !important;
+  border-color: #b42318 !important;
+  color: #fff !important;
+}
+
+.danger-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .panel {
   background: #fff;
   border: 1px solid #d9e0ea;
@@ -110,6 +121,11 @@ textarea {
   gap: 10px;
   justify-content: flex-end;
   margin-top: 20px;
+}
+
+.run-actions {
+  justify-content: flex-start;
+  margin-top: 12px;
 }
 
 .notice {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CircleAlert, FileSpreadsheet, KeyRound, Loader2, Play, Save } from "lucide-react";
+import { CheckCircle2, CircleAlert, FileSpreadsheet, KeyRound, Loader2, Play, Save, StopCircle } from "lucide-react";
 
 const steps = ["文件路径", "模型配置", "运行前预检", "开始筛选"];
 
@@ -79,7 +79,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!runId || run?.state === "completed" || run?.state === "failed") return;
+    if (!runId || run?.state === "completed" || run?.state === "cancelled" || run?.state === "failed") return;
     const timer = window.setInterval(() => {
       requestJson(`/api/runs/${runId}`)
         .then((body) => setRun(body.run))
@@ -133,6 +133,17 @@ export function App() {
       setRun(body.run);
       setRunId(body.run.run_id);
       setStep(3);
+    } catch (exc) {
+      setError(exc.message);
+    }
+  }
+
+  async function cancelRun() {
+    if (!runId) return;
+    setError("");
+    try {
+      const body = await requestJson(`/api/runs/${runId}/cancel`, { method: "POST", body: "{}" });
+      setRun(body.run);
     } catch (exc) {
       setError(exc.message);
     }
@@ -202,12 +213,19 @@ export function App() {
 
       {step === 3 && (
         <section className="panel">
-          <h2>{run?.state === "running" ? <Loader2 className="spin" size={22} /> : <Play size={22} />}开始筛选</h2>
+          <h2>{run?.state === "running" || run?.state === "stopping" ? <Loader2 className="spin" size={22} /> : <Play size={22} />}开始筛选</h2>
           {!run && <button className="primary" onClick={startRun}>开始筛选</button>}
           {run && (
             <>
               <div className="progress"><span style={{ width: `${progress}%` }} /></div>
               <p className="muted">{run.current_file || "等待任务更新"} {run.total ? `${run.current}/${run.total}` : ""}</p>
+              {(run.state === "queued" || run.state === "running" || run.state === "stopping") && (
+                <div className="actions run-actions">
+                  <button className="danger-button" onClick={cancelRun} disabled={run.state === "stopping"}>
+                    <StopCircle size={18} />{run.state === "stopping" ? "停止中" : "停止筛选"}
+                  </button>
+                </div>
+              )}
               <div className="stats">
                 {Object.entries(run.stats || {}).map(([key, value]) => <div key={key}><strong>{value}</strong><span>{key}</span></div>)}
               </div>

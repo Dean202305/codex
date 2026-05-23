@@ -1,9 +1,12 @@
 from pathlib import Path
+from threading import Event
 
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
+from resume_screening.models import PipelineEvent, PipelineStats
 from resume_screening.web.app import create_app
+from resume_screening.web.runs import RunManager
 
 
 def create_result_book(path: Path) -> None:
@@ -69,3 +72,32 @@ def test_precheck_endpoint_returns_items(tmp_path: Path) -> None:
     assert body["status"] in {"pass", "warning"}
     assert body["resume_file_count"] == 2
     assert body["items"]
+
+
+def test_cancel_run_endpoint_marks_run_stopping(tmp_path: Path) -> None:
+    started = Event()
+    release = Event()
+
+    class BlockingPipeline:
+        def __init__(self, event_handler, should_stop) -> None:
+            self.event_handler = event_handler
+            self.should_stop = should_stop
+
+        def run(self) -> PipelineStats:
+            self.event_handler(PipelineEvent("run_started", "开始处理", total=1))
+            started.set()
+            release.wait(timeout=2)
+            return PipelineStats()
+
+    config_path = tmp_path / "config.yaml"
+    client = TestClient(create_app(config_path=config_path, run_manager=RunManager(config_path, pipeline_factory=lambda config, handler, should_stop: BlockingPipeline(handler, should_stop))))
+    client.post("/api/config", json=valid_payload(tmp_path))
+    started_response = client.post("/api/runs")
+    run_id = started_response.json()["run"]["run_id"]
+    assert started.wait(timeout=2)
+
+    response = client.post(f"/api/runs/{run_id}/cancel")
+    release.set()
+
+    assert response.status_code == 200
+    assert response.json()["run"]["state"] == "stopping"

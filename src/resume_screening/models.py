@@ -95,7 +95,7 @@ class PipelineStats:
 
 @dataclass(frozen=True)
 class PipelineEvent:
-    type: Literal["run_started", "file_started", "file_completed", "run_completed", "warning"]
+    type: Literal["run_started", "file_started", "file_completed", "run_completed", "run_cancelled", "warning"]
     message: str
     current: int = 0
     total: int = 0
