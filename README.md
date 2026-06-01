@@ -26,7 +26,7 @@ resume-screening run --config config.yaml
 ```
 
 The tool appends rows to `/Users/mac/Downloads/小A科技（北京）组织招聘.xlsx`.
-It rereads `/Users/mac/Downloads/小A自动化岗位说明书.xlsx` on every run.
+It rereads `/Users/mac/Downloads/小A自动化岗位说明书_副本.xlsx` on every run.
 Historical rows are preserved.
 Duplicate resume content is still appended and marked red.
 The resume folder is scanned recursively. All visible regular files are processed; unsupported formats are appended as `待人工二筛` with an extraction note.
@@ -45,6 +45,22 @@ The web page has four steps:
 2. Save model API settings.
 3. Run a lightweight precheck.
 4. Start screening and watch live progress, logs, and final statistics.
+
+## Local Desktop App
+
+Build a portable macOS app bundle:
+
+```bash
+source .venv/bin/activate
+bash scripts/build_macos_app.sh
+```
+
+The outputs are `dist/小A简历筛选.app` and `dist/小A简历筛选-mac.zip`.
+
+The app stores its config at `~/Library/Application Support/小A简历筛选/config.yaml`.
+When copied to a new Mac, copy `小A简历筛选-mac.zip`, unzip it, launch the app, and reselect the local resume folder, job workbook, result workbook, and model API settings.
+The app bundles the Python runtime and project dependencies. OCR still depends on a local `tesseract` installation if image or scanned-PDF recognition is needed.
+The app is built for the architecture of the Mac that runs the build script. The current generated package is for Apple Silicon; build again on Intel Mac if an Intel-only Mac needs to run it.
 
 ## Manual-Review Mode
 

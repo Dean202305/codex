@@ -47,5 +47,13 @@ def web(
     uvicorn.run(create_app(config_path=config), host=host, port=port)
 
 
+@app.command()
+def desktop() -> None:
+    """Start the packaged local desktop app."""
+    from resume_screening.desktop_app import main as desktop_main
+
+    desktop_main()
+
+
 if __name__ == "__main__":
     app()

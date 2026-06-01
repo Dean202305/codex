@@ -11,7 +11,7 @@ from resume_screening.config import AppConfig
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "resume_dir": "/Users/mac/Downloads",
-    "job_book": "/Users/mac/Downloads/小A自动化岗位说明书.xlsx",
+    "job_book": "/Users/mac/Downloads/小A自动化岗位说明书_副本.xlsx",
     "result_book": "/Users/mac/Downloads/小A科技（北京）组织招聘.xlsx",
     "job_aliases": {},
     "default_source_channel": "",

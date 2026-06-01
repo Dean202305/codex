@@ -22,9 +22,11 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
+desktop = ["pywebview>=5.0", "pyinstaller>=6.0"]
 
 [project.scripts]
 resume-screening = "resume_screening.cli:app"
+resume-screening-desktop = "resume_screening.desktop_app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

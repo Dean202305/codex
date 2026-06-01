@@ -13,7 +13,7 @@ def test_load_config_reads_paths_and_model_settings(tmp_path: Path) -> None:
         yaml.safe_dump(
             {
                 "resume_dir": "/Users/mac/Downloads",
-                "job_book": "/Users/mac/Downloads/小A自动化岗位说明书.xlsx",
+                "job_book": "/Users/mac/Downloads/小A自动化岗位说明书_副本.xlsx",
                 "result_book": "/Users/mac/Downloads/小A科技（北京）组织招聘.xlsx",
                 "default_source_channel": "",
                 "default_interviewer": "",
@@ -81,7 +81,7 @@ def test_config_rejects_missing_model_when_manual_mode_disabled() -> None:
         AppConfig.model_validate(
             {
                 "resume_dir": "/Users/mac/Downloads",
-                "job_book": "/Users/mac/Downloads/小A自动化岗位说明书.xlsx",
+                "job_book": "/Users/mac/Downloads/小A自动化岗位说明书_副本.xlsx",
                 "result_book": "/Users/mac/Downloads/小A科技（北京）组织招聘.xlsx",
                 "model": {
                     "provider": "openai-compatible",

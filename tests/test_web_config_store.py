@@ -11,7 +11,7 @@ def test_load_config_for_web_uses_example_defaults_when_missing(tmp_path: Path) 
     data = load_config_for_web(config_path)
 
     assert data["resume_dir"] == "/Users/mac/Downloads"
-    assert data["job_book"].endswith("小A自动化岗位说明书.xlsx")
+    assert data["job_book"].endswith("小A自动化岗位说明书_副本.xlsx")
     assert data["result_book"].endswith("小A科技（北京）组织招聘.xlsx")
     assert data["model"]["allow_without_model"] is True
 
