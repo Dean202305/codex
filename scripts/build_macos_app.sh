@@ -20,6 +20,7 @@ fi
 
 APP_PATH="$ROOT_DIR/dist/小A简历筛选.app"
 ZIP_PATH="$ROOT_DIR/dist/小A简历筛选-mac.zip"
+DMG_PATH="$ROOT_DIR/dist/小A简历筛选-mac.dmg"
 SIGNED_DIR="$(mktemp -d /private/tmp/resume-screening-app.XXXXXX)"
 SIGNED_APP_PATH="$SIGNED_DIR/小A简历筛选.app"
 trap 'rm -rf "$SIGNED_DIR"' EXIT
@@ -47,5 +48,11 @@ rm -rf "$APP_PATH"
 ditto --norsrc "$SIGNED_APP_PATH" "$APP_PATH"
 (cd "$SIGNED_DIR" && ditto -c -k --keepParent --norsrc "小A简历筛选.app" "$ZIP_PATH")
 
+if command -v hdiutil >/dev/null 2>&1; then
+  ln -s /Applications "$SIGNED_DIR/Applications"
+  hdiutil create -volname "小A简历筛选" -srcfolder "$SIGNED_DIR" -ov -format UDZO "$DMG_PATH"
+fi
+
 echo "已生成：$APP_PATH"
 echo "可迁移压缩包：$ZIP_PATH"
+echo "本地安装包：$DMG_PATH"
