@@ -16,6 +16,7 @@ def clean_modules(modules):
 
 
 def runtime_binaries():
+    # Bundle local model runtimes from packaging/runtime/<platform>/llama-server*.
     runtime_root = ROOT / "packaging" / "runtime"
     if not runtime_root.exists():
         return []
@@ -69,19 +70,4 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name=APP_NAME,
-)
-
-app = BUNDLE(
-    coll,
-    name=f"{APP_NAME}.app",
-    icon=None,
-    bundle_identifier="com.xiaoa.resume-screening",
-    info_plist={
-        "CFBundleName": APP_NAME,
-        "CFBundleDisplayName": APP_NAME,
-        "NSHighResolutionCapable": True,
-        "NSDocumentsFolderUsageDescription": "用于读取简历、岗位说明书，并写入招聘结果表。",
-        "NSDownloadsFolderUsageDescription": "用于读取下载目录中的简历、岗位说明书，并写入招聘结果表。",
-        "NSDesktopFolderUsageDescription": "用于读取桌面目录中的简历、岗位说明书，并写入招聘结果表。",
-    },
 )

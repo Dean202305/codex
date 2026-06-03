@@ -9,6 +9,27 @@ if [ -x "$ROOT_DIR/.venv/bin/python" ]; then
   PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
 fi
 
+ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64|aarch64)
+    RUNTIME_KEY="macos-arm64"
+    ;;
+  x86_64|amd64)
+    RUNTIME_KEY="macos-x64"
+    ;;
+  *)
+    echo "不支持的 macOS 架构：$ARCH" >&2
+    exit 1
+    ;;
+esac
+
+RUNTIME_PATH="$ROOT_DIR/packaging/runtime/$RUNTIME_KEY/llama-server"
+if [ ! -f "$RUNTIME_PATH" ] && [ "${ALLOW_MISSING_LOCAL_RUNTIME:-}" != "1" ]; then
+  echo "缺少本地模型运行器：$RUNTIME_PATH" >&2
+  echo "请按 packaging/runtime/README.md 放置 llama-server，或仅做开发验证时设置 ALLOW_MISSING_LOCAL_RUNTIME=1。" >&2
+  exit 1
+fi
+
 "$PYTHON_BIN" -m pip install ".[desktop]"
 
 if [ -d web ]; then
