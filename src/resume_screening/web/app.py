@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from resume_screening.config import AppConfig
 from resume_screening.web.config_store import config_to_public_dict, load_config_for_web, save_config_for_web
+from resume_screening.web.local_model_api import register_local_model_routes
 from resume_screening.web.precheck import run_precheck
 from resume_screening.web.runs import RunAlreadyActive, RunManager
 
@@ -73,6 +74,8 @@ def create_app(config_path: Path = Path("config.yaml"), static_dir: Path | None 
             return {"run": _jsonable(manager.cancel(run_id))}
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
+
+    register_local_model_routes(app, config_path)
 
     if static_root.exists():
         assets = static_root / "assets"
