@@ -106,6 +106,62 @@ def test_config_rejects_missing_model_when_manual_mode_disabled() -> None:
         )
 
 
+def test_config_accepts_local_qwen_without_api_credentials(tmp_path: Path) -> None:
+    config = AppConfig.model_validate(
+        {
+            "resume_dir": tmp_path / "resumes",
+            "job_book": tmp_path / "jobs.xlsx",
+            "result_book": tmp_path / "result.xlsx",
+            "model": {
+                "provider": "local-qwen",
+                "base_url": "",
+                "api_key": "",
+                "model": "qwen3.5-local",
+                "timeout_seconds": 120,
+                "temperature": 0.1,
+                "allow_without_model": False,
+                "local": {
+                    "runtime": "llama.cpp",
+                    "model_family": "qwen3.5",
+                    "model_display_name": "Qwen3.5 本地模型",
+                    "model_path": str(tmp_path / "models" / "qwen.gguf"),
+                    "manifest_path": str(tmp_path / "models" / "manifest.json"),
+                    "host": "127.0.0.1",
+                    "port": 18080,
+                    "context_size": 8192,
+                    "threads": 0,
+                    "gpu_layers": "auto",
+                    "auto_start": True,
+                    "auto_download": False,
+                },
+            },
+        }
+    )
+
+    assert config.model.provider == "local-qwen"
+    assert config.model.is_complete() is True
+    assert config.model.local.port == 18080
+    assert config.model.local.model_path == tmp_path / "models" / "qwen.gguf"
+
+
+def test_config_rejects_local_qwen_without_model_name(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="model config missing required values: model"):
+        AppConfig.model_validate(
+            {
+                "resume_dir": tmp_path / "resumes",
+                "job_book": tmp_path / "jobs.xlsx",
+                "result_book": tmp_path / "result.xlsx",
+                "model": {
+                    "provider": "local-qwen",
+                    "base_url": "",
+                    "api_key": "",
+                    "model": "",
+                    "allow_without_model": False,
+                },
+            }
+        )
+
+
 def test_cli_app_imports_cleanly() -> None:
     from resume_screening.cli import app
 

@@ -26,6 +26,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "timeout_seconds": 60,
         "temperature": 0.1,
         "allow_without_model": True,
+        "local": {
+            "runtime": "llama.cpp",
+            "model_family": "qwen3.5",
+            "model_display_name": "Qwen3.5 本地模型",
+            "model_path": "",
+            "manifest_path": "models/qwen/manifest.json",
+            "host": "127.0.0.1",
+            "port": 18080,
+            "context_size": 8192,
+            "threads": 0,
+            "gpu_layers": "auto",
+            "auto_start": True,
+            "auto_download": False,
+        },
     },
     "screening": {
         "score_pass": 8,
@@ -78,6 +92,12 @@ def _serialize_validated_paths(data: dict[str, Any], validated: AppConfig) -> di
     serialized = deepcopy(data)
     for key in ("resume_dir", "job_book", "result_book", "index_path"):
         serialized[key] = str(getattr(validated, key))
+    local = serialized.get("model", {}).get("local")
+    if isinstance(local, dict):
+        if validated.model.local.model_path is not None:
+            local["model_path"] = str(validated.model.local.model_path)
+        if validated.model.local.manifest_path is not None:
+            local["manifest_path"] = str(validated.model.local.manifest_path)
     return serialized
 
 
@@ -86,4 +106,9 @@ def config_to_public_dict(data: dict[str, Any]) -> dict[str, Any]:
     for key in ("resume_dir", "job_book", "result_book", "index_path"):
         if key in public:
             public[key] = str(public[key])
+    local = public.get("model", {}).get("local")
+    if isinstance(local, dict):
+        for key in ("model_path", "manifest_path"):
+            if key in local and local[key] is not None:
+                local[key] = str(local[key])
     return public

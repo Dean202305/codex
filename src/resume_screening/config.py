@@ -19,26 +19,52 @@ class ScreeningConfig(BaseModel):
     categories: CategoryConfig = Field(default_factory=CategoryConfig)
 
 
+class LocalModelConfig(BaseModel):
+    runtime: str = "llama.cpp"
+    model_family: str = "qwen3.5"
+    model_display_name: str = "Qwen3.5 本地模型"
+    model_path: Path | None = None
+    manifest_path: Path = Path("models/qwen/manifest.json")
+    host: str = "127.0.0.1"
+    port: int = 18080
+    context_size: int = 8192
+    threads: int = 0
+    gpu_layers: str = "auto"
+    auto_start: bool = True
+    auto_download: bool = False
+
+    @field_validator("model_path", "manifest_path", mode="before")
+    @classmethod
+    def normalize_optional_path_fields(cls, value: object) -> object:
+        if value == "":
+            return None
+        return normalize_path_value(value)
+
+
 class ModelConfig(BaseModel):
-    provider: Literal["openai-compatible"] = "openai-compatible"
+    provider: Literal["openai-compatible", "local-qwen"] = "openai-compatible"
     base_url: str = ""
     api_key: str = ""
     model: str = ""
     timeout_seconds: int = 60
     temperature: float = 0.1
     allow_without_model: bool = False
+    local: LocalModelConfig = Field(default_factory=LocalModelConfig)
 
     @model_validator(mode="after")
     def require_model_config_unless_manual_mode(self) -> "ModelConfig":
         if self.allow_without_model:
             return self
-        missing = [name for name in ("base_url", "api_key", "model") if not getattr(self, name)]
+        required = ("model",) if self.provider == "local-qwen" else ("base_url", "api_key", "model")
+        missing = [name for name in required if not getattr(self, name)]
         if missing:
             joined = ", ".join(missing)
             raise ValueError(f"model config missing required values: {joined}")
         return self
 
     def is_complete(self) -> bool:
+        if self.provider == "local-qwen":
+            return bool(self.model)
         return all(getattr(self, name) for name in ("base_url", "api_key", "model"))
 
 

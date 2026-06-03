@@ -14,6 +14,8 @@ def test_load_config_for_web_uses_example_defaults_when_missing(tmp_path: Path) 
     assert data["job_book"].endswith("小A自动化岗位说明书_副本.xlsx")
     assert data["result_book"].endswith("小A科技（北京）组织招聘.xlsx")
     assert data["model"]["allow_without_model"] is True
+    assert data["model"]["local"]["model_family"] == "qwen3.5"
+    assert data["model"]["local"]["port"] == 18080
 
 
 def test_save_config_for_web_round_trips_paths_and_model(tmp_path: Path) -> None:
@@ -80,6 +82,44 @@ def test_save_config_for_web_persists_normalized_paths(tmp_path: Path) -> None:
     assert raw["resume_dir"] == str(resume_dir)
     assert raw["job_book"] == str(job_book)
     assert raw["result_book"] == str(result_book)
+
+
+def test_save_config_for_web_round_trips_local_qwen_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    model_path = tmp_path / "models" / "qwen.gguf"
+    manifest_path = tmp_path / "models" / "manifest.json"
+
+    saved = save_config_for_web(
+        config_path,
+        {
+            "resume_dir": str(tmp_path / "resumes"),
+            "job_book": str(tmp_path / "jobs.xlsx"),
+            "result_book": str(tmp_path / "result.xlsx"),
+            "model": {
+                "provider": "local-qwen",
+                "base_url": "",
+                "api_key": "",
+                "model": "qwen3.5-local",
+                "timeout_seconds": 120,
+                "temperature": 0.1,
+                "allow_without_model": False,
+                "local": {
+                    "model_path": str(model_path),
+                    "manifest_path": str(manifest_path),
+                    "port": 19090,
+                    "auto_start": True,
+                },
+            },
+        },
+    )
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    assert saved.model.provider == "local-qwen"
+    assert saved.model.local.model_path == model_path
+    assert saved.model.local.manifest_path == manifest_path
+    assert raw["model"]["local"]["port"] == 19090
+    assert raw["model"]["local"]["model_family"] == "qwen3.5"
 
 
 def test_config_to_public_dict_serializes_paths() -> None:

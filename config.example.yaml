@@ -21,6 +21,19 @@ model:
   timeout_seconds: 60
   temperature: 0.1
   allow_without_model: true
+  local:
+    runtime: "llama.cpp"
+    model_family: "qwen3.5"
+    model_display_name: "Qwen3.5 本地模型"
+    model_path: ""
+    manifest_path: "models/qwen/manifest.json"
+    host: "127.0.0.1"
+    port: 18080
+    context_size: 8192
+    threads: 0
+    gpu_layers: "auto"
+    auto_start: true
+    auto_download: false
 
 screening:
   score_pass: 8
