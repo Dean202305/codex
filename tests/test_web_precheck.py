@@ -78,3 +78,66 @@ def test_precheck_warns_when_resume_jobs_do_not_match_job_sheets(tmp_path: Path)
         item.name == "岗位匹配" and item.status == "warning" and "后端开发工程师" in item.message
         for item in result.items
     )
+
+
+def test_precheck_warns_when_local_qwen_model_needs_download(tmp_path: Path, monkeypatch) -> None:
+    config = make_config(tmp_path)
+    runtime = tmp_path / "runtime" / "macos-arm64" / "llama-server"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("RESUME_SCREENING_RUNTIME_DIR", str(tmp_path / "runtime"))
+    config.model = config.model.model_validate(
+        {
+            "provider": "local-qwen",
+            "base_url": "",
+            "api_key": "",
+            "model": "qwen3.5-local",
+            "timeout_seconds": 120,
+            "temperature": 0.1,
+            "allow_without_model": False,
+            "local": {
+                "model_path": str(tmp_path / "models" / "qwen.gguf"),
+                "manifest_path": str(tmp_path / "models" / "manifest.json"),
+                "host": "127.0.0.1",
+                "port": 18080,
+            },
+        }
+    )
+
+    result = run_precheck(config)
+
+    assert result.status == "warning"
+    assert any(item.name == "本地模型" and item.status == "warning" and "下载" in item.message for item in result.items)
+
+
+def test_precheck_passes_when_local_qwen_model_is_ready(tmp_path: Path, monkeypatch) -> None:
+    config = make_config(tmp_path)
+    runtime = tmp_path / "runtime" / "macos-arm64" / "llama-server"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("#!/bin/sh\n", encoding="utf-8")
+    model = tmp_path / "models" / "qwen.gguf"
+    model.parent.mkdir()
+    model.write_bytes(b"model")
+    monkeypatch.setenv("RESUME_SCREENING_RUNTIME_DIR", str(tmp_path / "runtime"))
+    config.model = config.model.model_validate(
+        {
+            "provider": "local-qwen",
+            "base_url": "",
+            "api_key": "",
+            "model": "qwen3.5-local",
+            "timeout_seconds": 120,
+            "temperature": 0.1,
+            "allow_without_model": False,
+            "local": {
+                "model_path": str(model),
+                "manifest_path": str(tmp_path / "models" / "manifest.json"),
+                "host": "127.0.0.1",
+                "port": 18080,
+            },
+        }
+    )
+
+    result = run_precheck(config)
+
+    assert result.status == "pass"
+    assert any(item.name == "本地模型" and item.status == "pass" and "已就绪" in item.message for item in result.items)

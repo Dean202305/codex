@@ -134,3 +134,68 @@ def test_build_prompt_replaces_invalid_unicode_surrogates() -> None:
 
     prompt.encode("utf-8")
     assert "\ud835" not in prompt
+
+
+def test_local_qwen_client_uses_local_openai_compatible_base_url(monkeypatch, tmp_path) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": """
+                            {
+                              "category": "可考虑",
+                              "overall_score": 7.5,
+                              "summary": "候选人经验可考虑。",
+                              "screening_reason": "岗位匹配度中等。",
+                              "missing_information": [],
+                              "reject_reason": "",
+                              "scores": {
+                                "ability": 7,
+                                "ego": 7,
+                                "desire": 7,
+                                "learning_ability": 7,
+                                "job_fit": 7.5,
+                                "experience_fit": 7.5,
+                                "skill_fit": 7,
+                                "stability_risk": 7
+                              }
+                            }
+                            """
+                        }
+                    }
+                ]
+            }
+
+    def fake_post(url, headers, json, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["payload"] = json
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr("resume_screening.model_client.httpx.post", fake_post)
+    client = ModelClient(
+        ModelConfig(
+            provider="local-qwen",
+            base_url="",
+            api_key="",
+            model="qwen3.5-local",
+            timeout_seconds=120,
+            allow_without_model=False,
+            local={"model_path": str(tmp_path / "qwen.gguf"), "port": 19090},
+        )
+    )
+
+    result = client.evaluate("候选人简历", JobRequirement("财务总监", {}, "岗位要求", True, []), {})
+
+    assert result.category == "可考虑"
+    assert captured["url"] == "http://127.0.0.1:19090/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer local-qwen"
+    assert captured["payload"]["model"] == "qwen3.5-local"

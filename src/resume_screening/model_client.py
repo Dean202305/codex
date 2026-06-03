@@ -6,6 +6,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from resume_screening.config import ModelConfig
+from resume_screening.local_model import LocalModelManager
 from resume_screening.models import (
     CATEGORY_CONSIDER,
     CATEGORY_MANUAL,
@@ -181,8 +182,8 @@ class ModelClient:
     def evaluate(self, resume_text: str, job: JobRequirement, filename_metadata: dict[str, str]) -> ScreeningResult:
         prompt = self._build_prompt(resume_text, job, filename_metadata)
         response = httpx.post(
-            f"{self.config.base_url.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {self.config.api_key}", "Content-Type": "application/json"},
+            f"{self._base_url().rstrip('/')}/chat/completions",
+            headers={"Authorization": f"Bearer {self._api_key()}", "Content-Type": "application/json"},
             json={
                 "model": self.config.model,
                 "temperature": self.config.temperature,
@@ -197,6 +198,16 @@ class ModelClient:
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
         return parse_model_response(json.loads(content))
+
+    def _base_url(self) -> str:
+        if self.config.provider == "local-qwen":
+            return LocalModelManager(self.config).service_base_url
+        return self.config.base_url
+
+    def _api_key(self) -> str:
+        if self.config.provider == "local-qwen" and not self.config.api_key:
+            return "local-qwen"
+        return self.config.api_key
 
     def _build_prompt(self, resume_text: str, job: JobRequirement, filename_metadata: dict[str, str]) -> str:
         payload = {

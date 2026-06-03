@@ -11,6 +11,7 @@ from resume_screening.file_scanner import iter_candidate_files
 from resume_screening.filename_parser import parse_resume_filename
 from resume_screening.job_matcher import resolve_job
 from resume_screening.job_requirements import load_job_requirements
+from resume_screening.local_model import LocalModelManager
 from resume_screening.models import JobRequirement
 
 CheckStatus = Literal["pass", "warning", "fail"]
@@ -104,7 +105,28 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
         except Exception as exc:
             items.append(PrecheckItem("招聘结果表", "fail", f"打开失败：{exc}"))
 
+    _append_model_precheck(items, config)
+
+    return PrecheckResult(
+        status=_overall_status(items),
+        resume_file_count=resume_count,
+        usable_job_sheet_count=usable_jobs,
+        items=items,
+    )
+
+
+def _append_model_precheck(items: list[PrecheckItem], config: AppConfig) -> None:
     model = config.model
+    if model.provider == "local-qwen":
+        status = LocalModelManager(model).status()
+        if status.state == "runtime_missing":
+            items.append(PrecheckItem("本地模型", "fail", status.message))
+        elif status.state == "model_missing":
+            items.append(PrecheckItem("本地模型", "warning", f"{status.message}。请先下载并安装本地模型。"))
+        else:
+            items.append(PrecheckItem("本地模型", "pass", f"本地模型已就绪：{model.model}"))
+        return
+
     missing_model = [name for name in ("base_url", "api_key", "model") if not getattr(model, name)]
     if model.allow_without_model:
         if missing_model:
@@ -115,13 +137,6 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
         items.append(PrecheckItem("模型配置", "fail", f"缺少模型配置：{', '.join(missing_model)}"))
     else:
         items.append(PrecheckItem("模型配置", "pass", f"模型已配置：{model.model}"))
-
-    return PrecheckResult(
-        status=_overall_status(items),
-        resume_file_count=resume_count,
-        usable_job_sheet_count=usable_jobs,
-        items=items,
-    )
 
 
 def _unmatched_resume_jobs(

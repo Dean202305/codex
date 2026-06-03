@@ -185,6 +185,71 @@ def test_pipeline_uses_model_when_config_is_complete_even_if_manual_fallback_all
     assert sheet["G2"].value == "模型已评估"
 
 
+def test_pipeline_uses_local_qwen_model_without_api_credentials(tmp_path: Path, monkeypatch) -> None:
+    resume_dir = tmp_path / "resumes"
+    resume_dir.mkdir()
+    resume = resume_dir / "【财务总监_北京 18-28K】郭燕婷 10年以上.docx"
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph("郭燕婷，10年以上财务经验。")
+    document.save(resume)
+    job_book = tmp_path / "jobs.xlsx"
+    result_book = tmp_path / "result.xlsx"
+    create_complete_job_book(job_book)
+    create_result_book(result_book)
+
+    class FakeModelClient:
+        def __init__(self, config) -> None:
+            assert config.provider == "local-qwen"
+            assert config.api_key == ""
+
+        def evaluate(self, resume_text, job, filename_metadata) -> ScreeningResult:
+            return ScreeningResult(
+                category="推荐初试",
+                overall_score=8.6,
+                summary="本地模型已评估",
+                screening_reason="候选人与岗位匹配。",
+                missing_information=[],
+                reject_reason="",
+                scores=ScreeningScores(8, 6, 8, 8, 9, 9, 8, 7),
+            )
+
+    monkeypatch.setattr("resume_screening.pipeline.ModelClient", FakeModelClient)
+    config = AppConfig.model_validate(
+        {
+            "resume_dir": resume_dir,
+            "job_book": job_book,
+            "result_book": result_book,
+            "index_path": tmp_path / "processed_index.json",
+            "model": {
+                "provider": "local-qwen",
+                "base_url": "",
+                "api_key": "",
+                "model": "qwen3.5-local",
+                "timeout_seconds": 120,
+                "temperature": 0.1,
+                "allow_without_model": False,
+                "local": {
+                    "model_path": str(tmp_path / "models" / "qwen.gguf"),
+                    "manifest_path": str(tmp_path / "models" / "manifest.json"),
+                    "port": 18080,
+                },
+            },
+        }
+    )
+
+    stats = ScreeningPipeline(config).run()
+
+    assert stats.processed == 1
+    assert stats.recommend == 1
+    assert stats.manual == 0
+    workbook = load_workbook(result_book)
+    sheet = workbook["多维表格"]
+    assert sheet["B2"].value == "推荐初试"
+    assert sheet["G2"].value == "本地模型已评估"
+
+
 def test_pipeline_uses_model_for_incomplete_job_when_model_is_configured(tmp_path: Path, monkeypatch) -> None:
     resume_dir = tmp_path / "resumes"
     resume_dir.mkdir()
