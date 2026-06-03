@@ -93,6 +93,23 @@ export function App() {
     return Math.round((run.current / run.total) * 100);
   }, [run]);
 
+  const runStateLabel = {
+    queued: "排队中",
+    running: "筛选中",
+    stopping: "停止中",
+    completed: "已完成",
+    cancelled: "已取消",
+    failed: "失败"
+  }[run?.state] || "待开始";
+
+  const runStateTone = run?.state === "failed"
+    ? "danger"
+    : run?.state === "completed"
+      ? "success"
+      : run?.state === "cancelled"
+        ? "warning"
+        : "info";
+
   function updateField(name, value) {
     setConfig((current) => ({ ...current, [name]: value }));
   }
@@ -151,30 +168,44 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <section className="topbar">
-        <div>
+      <section className="topbar glass-surface">
+        <div className="brand-block">
           <p className="eyebrow">本地运行</p>
           <h1>简历初筛工具</h1>
         </div>
-        <div className="stepper">
-          {steps.map((label, index) => (
-            <button key={label} className={index === step ? "active" : ""} onClick={() => setStep(index)}>
-              {index + 1}. {label}
-            </button>
-          ))}
+        <div className={`top-status ${runStateTone}`}>
+          <span>{run ? "任务状态" : "当前步骤"}</span>
+          <strong>{run ? runStateLabel : steps[step]}</strong>
         </div>
       </section>
+
+      <nav className="stepper glass-surface" aria-label="筛选步骤">
+        {steps.map((label, index) => (
+          <button key={label} className={index === step ? "active" : ""} onClick={() => setStep(index)}>
+            <span className="step-index">{String(index + 1).padStart(2, "0")}</span>
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
 
       {notice && <div className="notice success"><CheckCircle2 size={18} />{notice}</div>}
       {error && <div className="notice danger"><CircleAlert size={18} />{error}</div>}
 
       {step === 0 && (
-        <section className="panel">
-          <h2><FileSpreadsheet size={22} />文件路径</h2>
-          <label>简历文件夹<input value={config.resume_dir} onChange={(event) => updateField("resume_dir", event.target.value)} /></label>
-          <label>岗位说明书<input value={config.job_book} onChange={(event) => updateField("job_book", event.target.value)} /></label>
-          <label>招聘结果表<input value={config.result_book} onChange={(event) => updateField("result_book", event.target.value)} /></label>
-          <label>岗位别名映射<textarea value={jobAliasText} onChange={(event) => setJobAliasText(event.target.value)} placeholder={"后端开发工程师=全栈\n后端开发实习岗=全栈"} /></label>
+        <section className="panel work-panel">
+          <div className="panel-title">
+            <span className="title-icon"><FileSpreadsheet size={22} /></span>
+            <div>
+              <p className="eyebrow">STEP 01</p>
+              <h2>文件路径</h2>
+            </div>
+          </div>
+          <div className="form-grid">
+            <label>简历文件夹<input value={config.resume_dir} onChange={(event) => updateField("resume_dir", event.target.value)} /></label>
+            <label>岗位说明书<input value={config.job_book} onChange={(event) => updateField("job_book", event.target.value)} /></label>
+            <label>招聘结果表<input value={config.result_book} onChange={(event) => updateField("result_book", event.target.value)} /></label>
+            <label className="full-row">岗位别名映射<textarea value={jobAliasText} onChange={(event) => setJobAliasText(event.target.value)} placeholder={"后端开发工程师=全栈\n后端开发实习岗=全栈"} /></label>
+          </div>
           <div className="actions">
             <button onClick={saveConfig}><Save size={18} />保存配置</button>
             <button className="primary" onClick={() => setStep(1)}>下一步</button>
@@ -183,13 +214,21 @@ export function App() {
       )}
 
       {step === 1 && (
-        <section className="panel">
-          <h2><KeyRound size={22} />模型配置</h2>
-          <label>API 地址<input value={config.model.base_url} onChange={(event) => updateModel("base_url", event.target.value)} /></label>
-          <label>API Key<input type="password" value={config.model.api_key} onChange={(event) => updateModel("api_key", event.target.value)} /></label>
-          <label>模型名<input value={config.model.model} onChange={(event) => updateModel("model", event.target.value)} /></label>
-          <label>超时时间（秒）<input type="number" value={config.model.timeout_seconds} onChange={(event) => updateModel("timeout_seconds", Number(event.target.value))} /></label>
-          <label className="checkbox"><input type="checkbox" checked={config.model.allow_without_model} onChange={(event) => updateModel("allow_without_model", event.target.checked)} />模型不可用时允许进入待人工二筛兜底</label>
+        <section className="panel work-panel">
+          <div className="panel-title">
+            <span className="title-icon"><KeyRound size={22} /></span>
+            <div>
+              <p className="eyebrow">STEP 02</p>
+              <h2>模型配置</h2>
+            </div>
+          </div>
+          <div className="form-grid">
+            <label>API 地址<input value={config.model.base_url} onChange={(event) => updateModel("base_url", event.target.value)} /></label>
+            <label>API Key<input type="password" value={config.model.api_key} onChange={(event) => updateModel("api_key", event.target.value)} /></label>
+            <label>模型名<input value={config.model.model} onChange={(event) => updateModel("model", event.target.value)} /></label>
+            <label>超时时间（秒）<input type="number" value={config.model.timeout_seconds} onChange={(event) => updateModel("timeout_seconds", Number(event.target.value))} /></label>
+            <label className="checkbox full-row"><input type="checkbox" checked={config.model.allow_without_model} onChange={(event) => updateModel("allow_without_model", event.target.checked)} />模型不可用时允许进入待人工二筛兜底</label>
+          </div>
           <div className="actions">
             <button onClick={saveConfig}><Save size={18} />保存配置</button>
             <button className="primary" onClick={runPrecheck}>运行预检</button>
@@ -198,12 +237,22 @@ export function App() {
       )}
 
       {step === 2 && (
-        <section className="panel">
-          <h2>运行前预检</h2>
+        <section className="panel work-panel">
+          <div className="panel-title">
+            <span className="title-icon"><CheckCircle2 size={22} /></span>
+            <div>
+              <p className="eyebrow">STEP 03</p>
+              <h2>运行前预检</h2>
+            </div>
+          </div>
           {!precheck && <button className="primary" onClick={runPrecheck}>开始预检</button>}
           {precheck && (
             <div className="checks">
-              <div className={`summary ${precheck.status}`}>待处理文件：{precheck.resume_file_count} 个</div>
+              <div className={`summary ${precheck.status}`}>
+                <span>待处理文件</span>
+                <strong>{precheck.resume_file_count}</strong>
+                <small>个</small>
+              </div>
               {precheck.items.map((item) => <div className={`check ${item.status}`} key={item.name}><strong>{item.name}</strong><span>{item.message}</span></div>)}
               <button className="primary" onClick={startRun}><Play size={18} />开始筛选</button>
             </div>
@@ -212,8 +261,15 @@ export function App() {
       )}
 
       {step === 3 && (
-        <section className="panel">
-          <h2>{run?.state === "running" || run?.state === "stopping" ? <Loader2 className="spin" size={22} /> : <Play size={22} />}开始筛选</h2>
+        <section className="panel work-panel">
+          <div className="panel-title">
+            <span className="title-icon">{run?.state === "running" || run?.state === "stopping" ? <Loader2 className="spin" size={22} /> : <Play size={22} />}</span>
+            <div>
+              <p className="eyebrow">STEP 04</p>
+              <h2>开始筛选</h2>
+            </div>
+            <span className={`state-pill ${run?.state || "idle"}`}>{runStateLabel}</span>
+          </div>
           {!run && <button className="primary" onClick={startRun}>开始筛选</button>}
           {run && (
             <>
