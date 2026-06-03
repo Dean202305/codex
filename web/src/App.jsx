@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CircleAlert, FileSpreadsheet, KeyRound, Loader2, Play, Save, StopCircle } from "lucide-react";
+import { CheckCircle2, CircleAlert, CloudDownload, Cpu, FileSpreadsheet, KeyRound, Loader2, Play, RefreshCcw, Save, StopCircle, X } from "lucide-react";
 
 const steps = ["文件路径", "模型配置", "运行前预检", "开始筛选"];
 
@@ -19,7 +19,21 @@ const emptyConfig = {
     model: "",
     timeout_seconds: 60,
     temperature: 0.1,
-    allow_without_model: true
+    allow_without_model: true,
+    local: {
+      runtime: "llama.cpp",
+      model_family: "qwen3.5",
+      model_display_name: "Qwen3.5 本地模型",
+      model_path: "",
+      manifest_path: "models/qwen/manifest.json",
+      host: "127.0.0.1",
+      port: 18080,
+      context_size: 8192,
+      threads: 0,
+      gpu_layers: "auto",
+      auto_start: true,
+      auto_download: false
+    }
   }
 };
 
@@ -36,7 +50,30 @@ async function requestJson(path, options = {}) {
 }
 
 function mergeConfig(config) {
-  return { ...emptyConfig, ...config, model: { ...emptyConfig.model, ...config.model } };
+  return {
+    ...emptyConfig,
+    ...config,
+    model: {
+      ...emptyConfig.model,
+      ...config.model,
+      local: { ...emptyConfig.model.local, ...config.model?.local }
+    }
+  };
+}
+
+function formatBytes(value = 0) {
+  if (!value) return "未知大小";
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  return `${value} B`;
+}
+
+function localStatusLabel(state) {
+  return {
+    ready: "本地模型可用",
+    model_missing: "需要下载模型",
+    runtime_missing: "运行器缺失"
+  }[state] || "等待检测";
 }
 
 function formatJobAliases(aliases = {}) {
@@ -67,6 +104,12 @@ export function App() {
   const [precheck, setPrecheck] = useState(null);
   const [run, setRun] = useState(null);
   const [runId, setRunId] = useState("");
+  const [localStatus, setLocalStatus] = useState(null);
+  const [downloadPlan, setDownloadPlan] = useState(null);
+  const [downloadTask, setDownloadTask] = useState(null);
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
+  const [checkingLocalModel, setCheckingLocalModel] = useState(false);
+  const [savedProvider, setSavedProvider] = useState("");
 
   useEffect(() => {
     requestJson("/api/config")
@@ -74,6 +117,7 @@ export function App() {
         const merged = mergeConfig(body.config);
         setConfig(merged);
         setJobAliasText(formatJobAliases(merged.job_aliases));
+        setSavedProvider(merged.model.provider);
       })
       .catch((exc) => setError(exc.message));
   }, []);
@@ -87,6 +131,32 @@ export function App() {
     }, 1200);
     return () => window.clearInterval(timer);
   }, [runId, run?.state]);
+
+  useEffect(() => {
+    if (step !== 1 || config.model.provider !== "local-qwen" || savedProvider !== "local-qwen") return;
+    loadLocalModelStatus();
+    loadDownloadPlan();
+  }, [step, config.model.provider, savedProvider]);
+
+  useEffect(() => {
+    if (!downloadTask?.task_id || !["queued", "running"].includes(downloadTask.state)) return;
+    const timer = window.setInterval(() => {
+      requestJson(`/api/local-model/download/${downloadTask.task_id}`)
+        .then((body) => {
+          setDownloadTask(body.task);
+          if (body.task.state === "completed") {
+            setNotice("本地模型已安装完成，正在进行可用性检测");
+            loadLocalModelStatus();
+            checkLocalModel();
+          }
+          if (body.task.state === "failed") {
+            setError(body.task.error || "模型下载失败");
+          }
+        })
+        .catch((exc) => setError(exc.message));
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [downloadTask?.task_id, downloadTask?.state]);
 
   const progress = useMemo(() => {
     if (!run || !run.total) return 0;
@@ -118,17 +188,62 @@ export function App() {
     setConfig((current) => ({ ...current, model: { ...current.model, [name]: value } }));
   }
 
-  async function saveConfig() {
+  function updateLocalModel(name, value) {
+    setConfig((current) => ({
+      ...current,
+      model: {
+        ...current.model,
+        local: { ...current.model.local, [name]: value }
+      }
+    }));
+  }
+
+  async function updateProvider(provider) {
+    const nextConfig = {
+      ...config,
+      model: {
+        ...config.model,
+        provider,
+        model: provider === "local-qwen"
+          ? (config.model.provider === "local-qwen" && config.model.model ? config.model.model : "qwen3.5-local")
+          : config.model.model,
+        timeout_seconds: provider === "local-qwen" ? Math.max(Number(config.model.timeout_seconds) || 0, 120) : config.model.timeout_seconds,
+        allow_without_model: provider === "local-qwen" ? false : config.model.allow_without_model
+      }
+    };
+    setConfig(nextConfig);
+    setPrecheck(null);
+    setLocalStatus(null);
+    setDownloadPlan(null);
+    await persistConfig(nextConfig, provider === "local-qwen" ? "已切换到本地模型" : "已切换到自定义模型");
+    if (provider === "local-qwen") {
+      await loadLocalModelStatus();
+      await loadDownloadPlan();
+    }
+  }
+
+  async function persistConfig(configToSave, successMessage) {
     setError("");
     setNotice("");
     try {
-      const body = await requestJson("/api/config", { method: "POST", body: JSON.stringify({ ...config, job_aliases: parseJobAliases(jobAliasText) }) });
+      const body = await requestJson("/api/config", { method: "POST", body: JSON.stringify({ ...configToSave, job_aliases: parseJobAliases(jobAliasText) }) });
       const merged = mergeConfig(body.config);
       setConfig(merged);
       setJobAliasText(formatJobAliases(merged.job_aliases));
-      setNotice("配置已保存到本地 config.yaml");
+      setSavedProvider(merged.model.provider);
+      setNotice(successMessage);
+      return merged;
     } catch (exc) {
       setError(exc.message);
+      return null;
+    }
+  }
+
+  async function saveConfig() {
+    const merged = await persistConfig(config, "配置已保存到本地 config.yaml");
+    if (merged?.model.provider === "local-qwen") {
+      await loadLocalModelStatus();
+      await loadDownloadPlan();
     }
   }
 
@@ -140,6 +255,67 @@ export function App() {
       setStep(2);
     } catch (exc) {
       setError(exc.message);
+    }
+  }
+
+  async function loadLocalModelStatus() {
+    try {
+      const body = await requestJson("/api/local-model/status");
+      setLocalStatus(body.status);
+    } catch (exc) {
+      setLocalStatus(null);
+      setError(exc.message);
+    }
+  }
+
+  async function loadDownloadPlan() {
+    try {
+      const body = await requestJson("/api/local-model/download-plan");
+      setDownloadPlan(body.plan);
+    } catch (exc) {
+      setDownloadPlan(null);
+      setError(exc.message);
+    }
+  }
+
+  async function startLocalModelDownload() {
+    setError("");
+    setNotice("");
+    setShowDownloadConfirm(false);
+    try {
+      const body = await requestJson("/api/local-model/download", { method: "POST", body: "{}" });
+      setDownloadTask(body.task);
+      setNotice("已开始下载本地模型");
+    } catch (exc) {
+      setError(exc.message);
+    }
+  }
+
+  async function cancelLocalModelDownload() {
+    if (!downloadTask?.task_id) return;
+    try {
+      const body = await requestJson(`/api/local-model/download/${downloadTask.task_id}/cancel`, { method: "POST", body: "{}" });
+      setDownloadTask(body.task);
+    } catch (exc) {
+      setError(exc.message);
+    }
+  }
+
+  async function checkLocalModel() {
+    setCheckingLocalModel(true);
+    setError("");
+    try {
+      const body = await requestJson("/api/local-model/check", { method: "POST", body: "{}" });
+      setLocalStatus(body.status);
+      if (body.available) {
+        setNotice("本地模型服务可用");
+      } else {
+        setError(body.message || "本地模型服务暂不可用");
+      }
+    } catch (exc) {
+      setError(exc.message);
+    } finally {
+      setCheckingLocalModel(false);
     }
   }
 
@@ -190,6 +366,30 @@ export function App() {
 
       {notice && <div className="notice success"><CheckCircle2 size={18} />{notice}</div>}
       {error && <div className="notice danger"><CircleAlert size={18} />{error}</div>}
+      {showDownloadConfirm && (
+        <div className="modal-backdrop">
+          <section className="modal panel">
+            <button className="icon-button close-button" onClick={() => setShowDownloadConfirm(false)} aria-label="关闭"><X size={18} /></button>
+            <div className="panel-title">
+              <span className="title-icon"><CloudDownload size={22} /></span>
+              <div>
+                <p className="eyebrow">LOCAL MODEL</p>
+                <h2>下载本地模型</h2>
+              </div>
+            </div>
+            <div className="download-detail">
+              <div><span>模型</span><strong>{downloadPlan?.display_name || "Qwen3.5 本地模型"}</strong></div>
+              <div><span>大小</span><strong>{formatBytes(downloadPlan?.size_bytes)}</strong></div>
+              <div><span>保存位置</span><strong>{downloadPlan?.target_path || config.model.local.model_path || "应用模型目录"}</strong></div>
+            </div>
+            <p className="muted">确认后会联网下载模型文件。下载完成后软件会自动安装并检测是否可用。</p>
+            <div className="actions">
+              <button onClick={() => setShowDownloadConfirm(false)}>取消</button>
+              <button className="primary" onClick={startLocalModelDownload}><CloudDownload size={18} />确认下载</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {step === 0 && (
         <section className="panel work-panel">
@@ -222,13 +422,54 @@ export function App() {
               <h2>模型配置</h2>
             </div>
           </div>
-          <div className="form-grid">
-            <label>API 地址<input value={config.model.base_url} onChange={(event) => updateModel("base_url", event.target.value)} /></label>
-            <label>API Key<input type="password" value={config.model.api_key} onChange={(event) => updateModel("api_key", event.target.value)} /></label>
-            <label>模型名<input value={config.model.model} onChange={(event) => updateModel("model", event.target.value)} /></label>
-            <label>超时时间（秒）<input type="number" value={config.model.timeout_seconds} onChange={(event) => updateModel("timeout_seconds", Number(event.target.value))} /></label>
-            <label className="checkbox full-row"><input type="checkbox" checked={config.model.allow_without_model} onChange={(event) => updateModel("allow_without_model", event.target.checked)} />模型不可用时允许进入待人工二筛兜底</label>
+          <div className="provider-toggle" role="tablist" aria-label="模型模式">
+            <button className={config.model.provider === "local-qwen" ? "active" : ""} onClick={() => updateProvider("local-qwen")}><Cpu size={18} />本地模型</button>
+            <button className={config.model.provider === "openai-compatible" ? "active" : ""} onClick={() => updateProvider("openai-compatible")}><KeyRound size={18} />自定义模型</button>
           </div>
+          {config.model.provider === "local-qwen" ? (
+            <div className="local-model-grid">
+              <div className={`local-model-card ${localStatus?.state || "unknown"}`}>
+                <div>
+                  <span>本地模型状态</span>
+                  <strong>{localStatusLabel(localStatus?.state)}</strong>
+                </div>
+                <p>{localStatus?.message || "选择本地模型后可检测安装状态"}</p>
+                <div className="actions compact-actions">
+                  <button onClick={loadLocalModelStatus}><RefreshCcw size={18} />刷新</button>
+                  {localStatus?.state === "model_missing" && <button className="primary" onClick={() => setShowDownloadConfirm(true)}><CloudDownload size={18} />下载并安装</button>}
+                  <button onClick={checkLocalModel} disabled={checkingLocalModel || localStatus?.state !== "ready"}>{checkingLocalModel ? <Loader2 className="spin" size={18} /> : <CheckCircle2 size={18} />}检测可用</button>
+                </div>
+              </div>
+              <div className="form-grid local-settings">
+                <label>模型名<input value={config.model.model} onChange={(event) => updateModel("model", event.target.value)} /></label>
+                <label>服务端口<input type="number" value={config.model.local.port} onChange={(event) => updateLocalModel("port", Number(event.target.value))} /></label>
+                <label>模型文件路径<input value={config.model.local.model_path || ""} onChange={(event) => updateLocalModel("model_path", event.target.value)} placeholder={downloadPlan?.target_path || "自动保存到应用模型目录"} /></label>
+                <label>超时时间（秒）<input type="number" value={config.model.timeout_seconds} onChange={(event) => updateModel("timeout_seconds", Number(event.target.value))} /></label>
+                <label>上下文长度<input type="number" value={config.model.local.context_size} onChange={(event) => updateLocalModel("context_size", Number(event.target.value))} /></label>
+                <label>GPU 层数<input value={config.model.local.gpu_layers} onChange={(event) => updateLocalModel("gpu_layers", event.target.value)} /></label>
+              </div>
+              {downloadTask && (
+                <div className={`download-task ${downloadTask.state}`}>
+                  <div className="download-task-head">
+                    <strong>{downloadTask.display_name}</strong>
+                    <span>{downloadTask.state}</span>
+                  </div>
+                  <div className="progress"><span style={{ width: `${downloadTask.total_bytes ? Math.round((downloadTask.bytes_downloaded / downloadTask.total_bytes) * 100) : 0}%` }} /></div>
+                  <p className="muted">{formatBytes(downloadTask.bytes_downloaded)} / {formatBytes(downloadTask.total_bytes)} · {downloadTask.message}</p>
+                  {["queued", "running"].includes(downloadTask.state) && <button className="danger-button" onClick={cancelLocalModelDownload}><StopCircle size={18} />取消下载</button>}
+                  {downloadTask.error && <p className="danger-text">{downloadTask.error}</p>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="form-grid">
+              <label>API 地址<input value={config.model.base_url} onChange={(event) => updateModel("base_url", event.target.value)} /></label>
+              <label>API Key<input type="password" value={config.model.api_key} onChange={(event) => updateModel("api_key", event.target.value)} /></label>
+              <label>模型名<input value={config.model.model} onChange={(event) => updateModel("model", event.target.value)} /></label>
+              <label>超时时间（秒）<input type="number" value={config.model.timeout_seconds} onChange={(event) => updateModel("timeout_seconds", Number(event.target.value))} /></label>
+              <label className="checkbox full-row"><input type="checkbox" checked={config.model.allow_without_model} onChange={(event) => updateModel("allow_without_model", event.target.checked)} />模型不可用时允许进入待人工二筛兜底</label>
+            </div>
+          )}
           <div className="actions">
             <button onClick={saveConfig}><Save size={18} />保存配置</button>
             <button className="primary" onClick={runPrecheck}>运行预检</button>
