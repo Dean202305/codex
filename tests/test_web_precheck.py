@@ -3,6 +3,7 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from resume_screening.config import AppConfig
+from resume_screening.local_model import platform_runtime_key
 from resume_screening.web.precheck import run_precheck
 
 
@@ -46,6 +47,15 @@ def make_config(tmp_path: Path) -> AppConfig:
     )
 
 
+def create_current_runtime(root: Path) -> Path:
+    key = platform_runtime_key()
+    executable = "llama-server.exe" if key.startswith("windows") else "llama-server"
+    runtime = root / key / executable
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("@echo off\n" if executable.endswith(".exe") else "#!/bin/sh\n", encoding="utf-8")
+    return runtime
+
+
 def test_precheck_passes_for_valid_local_files(tmp_path: Path) -> None:
     result = run_precheck(make_config(tmp_path))
 
@@ -82,9 +92,7 @@ def test_precheck_warns_when_resume_jobs_do_not_match_job_sheets(tmp_path: Path)
 
 def test_precheck_warns_when_local_qwen_model_needs_download(tmp_path: Path, monkeypatch) -> None:
     config = make_config(tmp_path)
-    runtime = tmp_path / "runtime" / "macos-arm64" / "llama-server"
-    runtime.parent.mkdir(parents=True)
-    runtime.write_text("#!/bin/sh\n", encoding="utf-8")
+    create_current_runtime(tmp_path / "runtime")
     monkeypatch.setenv("RESUME_SCREENING_RUNTIME_DIR", str(tmp_path / "runtime"))
     config.model = config.model.model_validate(
         {
@@ -112,9 +120,7 @@ def test_precheck_warns_when_local_qwen_model_needs_download(tmp_path: Path, mon
 
 def test_precheck_passes_when_local_qwen_model_is_ready(tmp_path: Path, monkeypatch) -> None:
     config = make_config(tmp_path)
-    runtime = tmp_path / "runtime" / "macos-arm64" / "llama-server"
-    runtime.parent.mkdir(parents=True)
-    runtime.write_text("#!/bin/sh\n", encoding="utf-8")
+    create_current_runtime(tmp_path / "runtime")
     model = tmp_path / "models" / "qwen.gguf"
     model.parent.mkdir()
     model.write_bytes(b"model")

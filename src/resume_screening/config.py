@@ -1,5 +1,6 @@
 from pathlib import Path
 import shlex
+import os
 from typing import Literal
 
 import yaml
@@ -93,7 +94,7 @@ def normalize_path_value(value: object) -> object:
     if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"'}:
         cleaned = cleaned[1:-1].strip()
     try:
-        parts = shlex.split(cleaned)
+        parts = shlex.split(cleaned, posix=os.name != "nt")
     except ValueError:
         parts = []
     if len(parts) == 1:

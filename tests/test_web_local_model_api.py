@@ -7,6 +7,7 @@ import time
 from fastapi.testclient import TestClient
 import yaml
 
+from resume_screening.local_model import platform_runtime_key
 from resume_screening.web.app import create_app
 
 
@@ -42,9 +43,11 @@ def write_local_config(config_path: Path, tmp_path: Path) -> Path:
 
 
 def create_runtime(runtime_root: Path) -> None:
-    runtime = runtime_root / "macos-arm64" / "llama-server"
+    key = platform_runtime_key()
+    executable = "llama-server.exe" if key.startswith("windows") else "llama-server"
+    runtime = runtime_root / key / executable
     runtime.parent.mkdir(parents=True)
-    runtime.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime.write_text("@echo off\n" if executable.endswith(".exe") else "#!/bin/sh\n", encoding="utf-8")
 
 
 def test_local_model_status_and_plan_endpoints(tmp_path: Path, monkeypatch) -> None:
