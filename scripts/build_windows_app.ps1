@@ -30,6 +30,18 @@ if (Test-Path (Join-Path $Root "web")) {
 & $Python -m PyInstaller --noconfirm packaging/windows/resume_screening_windows.spec
 
 $AppDir = Join-Path $Root "dist\小A简历筛选"
+$RuntimeSource = Join-Path $Root "packaging\runtime"
+$RuntimeDest = Join-Path $AppDir "_internal\packaging\runtime"
+if (Test-Path $RuntimeSource) {
+    New-Item -ItemType Directory -Force $RuntimeDest | Out-Null
+    Copy-Item -Path (Join-Path $RuntimeSource "*") -Destination $RuntimeDest -Recurse -Force
+}
+
+$BundledRuntimePath = Join-Path $RuntimeDest "windows-x64\llama-server.exe"
+if (-not (Test-Path $BundledRuntimePath) -and $env:ALLOW_MISSING_LOCAL_RUNTIME -ne "1") {
+    Write-Error "Windows 包缺少本地模型运行器：$BundledRuntimePath"
+}
+
 $ZipPath = Join-Path $Root "dist\小A简历筛选-windows-x64.zip"
 if (Test-Path $ZipPath) {
     Remove-Item $ZipPath -Force

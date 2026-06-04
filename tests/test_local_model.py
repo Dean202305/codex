@@ -1,7 +1,8 @@
 from pathlib import Path
+import sys
 
 from resume_screening.config import ModelConfig
-from resume_screening.local_model import LocalModelManager, platform_runtime_key
+from resume_screening.local_model import LocalModelManager, default_runtime_root, platform_runtime_key
 
 
 def local_config(tmp_path: Path, **overrides: object) -> ModelConfig:
@@ -32,6 +33,17 @@ def test_platform_runtime_key_maps_common_desktop_targets() -> None:
     assert platform_runtime_key("Darwin", "x86_64") == "macos-x64"
     assert platform_runtime_key("Windows", "AMD64") == "windows-x64"
     assert platform_runtime_key("Windows", "x86_64") == "windows-x64"
+
+
+def test_default_runtime_root_finds_packaged_onedir_runtime(tmp_path: Path, monkeypatch) -> None:
+    app_dir = tmp_path / "App"
+    runtime_root = app_dir / "_internal" / "packaging" / "runtime"
+    runtime_root.mkdir(parents=True)
+    monkeypatch.delenv("RESUME_SCREENING_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path / "missing-meipass"), raising=False)
+    monkeypatch.setattr(sys, "executable", str(app_dir / "小A简历筛选.exe"))
+
+    assert default_runtime_root() == runtime_root
 
 
 def test_status_reports_missing_runtime_before_model(tmp_path: Path) -> None:
@@ -106,3 +118,19 @@ def test_build_server_command_uses_runtime_model_and_openai_port(tmp_path: Path)
     assert "18080" in command
     assert "--alias" in command
     assert "qwen3.5-local" in command
+
+
+def test_windows_server_environment_adds_runtime_and_bundle_paths(tmp_path: Path, monkeypatch) -> None:
+    import resume_screening.local_model as local_model
+
+    runtime_root = tmp_path / "App" / "_internal" / "packaging" / "runtime"
+    runtime = runtime_root / "windows-x64" / "llama-server.exe"
+    runtime.parent.mkdir(parents=True)
+    manager = LocalModelManager(local_config(tmp_path), app_data_dir=tmp_path / "app", runtime_root=runtime_root)
+    monkeypatch.setattr(local_model.os, "name", "nt")
+    monkeypatch.setenv("PATH", "C:\\Windows")
+
+    env = manager._server_environment(runtime)
+
+    assert str(runtime.parent) in env["PATH"]
+    assert str(tmp_path / "App" / "_internal") in env["PATH"]

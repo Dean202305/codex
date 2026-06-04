@@ -52,6 +52,25 @@ jobs:
         shell: pwsh
         run: .\scripts\build_windows_app.ps1 -Python python
 
+      - name: Verify Windows portable package
+        shell: pwsh
+        run: |
+          $runtime = "dist\小A简历筛选\_internal\packaging\runtime\windows-x64\llama-server.exe"
+          if (-not (Test-Path $runtime)) {
+            throw "Windows portable package is missing $runtime"
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipPath = "dist\小A简历筛选-windows-x64.zip"
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            $match = $zip.Entries | Where-Object { $_.FullName -like "*packaging/runtime/windows-x64/llama-server.exe" } | Select-Object -First 1
+            if (-not $match) {
+              throw "Windows portable zip is missing packaging/runtime/windows-x64/llama-server.exe"
+            }
+          } finally {
+            $zip.Dispose()
+          }
+
       - name: Upload Windows zip
         uses: actions/upload-artifact@v4
         with:

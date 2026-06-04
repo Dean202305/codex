@@ -40,6 +40,23 @@ fi
 "$PYTHON_BIN" -m PyInstaller --noconfirm packaging/macos/resume_screening_macos.spec
 
 APP_PATH="$ROOT_DIR/dist/小A简历筛选.app"
+RUNTIME_SOURCE="$ROOT_DIR/packaging/runtime"
+RUNTIME_DEST="$APP_PATH/Contents/Resources/packaging/runtime"
+if [ -d "$RUNTIME_SOURCE" ]; then
+  mkdir -p "$(dirname "$RUNTIME_DEST")"
+  rm -rf "$RUNTIME_DEST"
+  ditto --norsrc "$RUNTIME_SOURCE" "$RUNTIME_DEST"
+fi
+
+BUNDLED_RUNTIME_PATH="$RUNTIME_DEST/$RUNTIME_KEY/llama-server"
+if [ ! -f "$BUNDLED_RUNTIME_PATH" ] && [ "${ALLOW_MISSING_LOCAL_RUNTIME:-}" != "1" ]; then
+  echo "macOS 包缺少本地模型运行器：$BUNDLED_RUNTIME_PATH" >&2
+  exit 1
+fi
+if [ -f "$BUNDLED_RUNTIME_PATH" ]; then
+  chmod +x "$BUNDLED_RUNTIME_PATH"
+fi
+
 ZIP_PATH="$ROOT_DIR/dist/小A简历筛选-mac.zip"
 DMG_PATH="$ROOT_DIR/dist/小A简历筛选-mac.dmg"
 SIGNED_DIR="$(mktemp -d /private/tmp/resume-screening-app.XXXXXX)"

@@ -26,6 +26,8 @@ def test_windows_build_script_and_spec_exist() -> None:
     assert "PyInstaller" in script
     assert "windows-x64" in script
     assert "ALLOW_MISSING_LOCAL_RUNTIME" in script
+    assert "_internal\\packaging\\runtime" in script
+    assert "Windows 包缺少本地模型运行器" in script
     assert "desktop_entry.py" in spec
     assert '"packaging" / "runtime"' in spec
     assert "runtime_datas" in spec
@@ -38,6 +40,8 @@ def test_windows_portable_workflow_uploads_zip_artifact() -> None:
 
     assert "windows-latest" in workflow
     assert "llama-server.exe" in workflow
+    assert "Verify Windows portable package" in workflow
+    assert "packaging/runtime/windows-x64/llama-server.exe" in workflow
     assert "scripts\\build_windows_app.ps1" in workflow or "scripts/build_windows_app.ps1" in workflow
     assert "actions/upload-artifact" in workflow
     assert "小A简历筛选-windows-x64.zip" in workflow

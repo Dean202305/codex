@@ -83,7 +83,14 @@ def default_runtime_root() -> Path:
     if override:
         return Path(override).expanduser()
     bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
-    candidates = [bundle_root / "packaging" / "runtime", bundle_root / "runtime"]
+    executable_root = Path(sys.executable).resolve().parent
+    candidates = [
+        bundle_root / "packaging" / "runtime",
+        bundle_root / "runtime",
+        executable_root / "_internal" / "packaging" / "runtime",
+        executable_root.parent / "Resources" / "packaging" / "runtime",
+        executable_root.parent / "Frameworks" / "packaging" / "runtime",
+    ]
     for candidate in candidates:
         if candidate.exists():
             return candidate
@@ -229,7 +236,13 @@ class LocalModelManager:
         if status.state != "ready":
             raise RuntimeError(status.message)
         command = self.build_server_command(Path(status.model_path))
-        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            env=self._server_environment(Path(status.runtime_path)),
+        )
         deadline = time.monotonic() + wait_seconds
         while time.monotonic() < deadline:
             ok, _message = self.check_service(timeout_seconds=2)
@@ -258,6 +271,14 @@ class LocalModelManager:
         if expanded.is_absolute():
             return expanded
         return self.app_data_dir / expanded
+
+    def _server_environment(self, runtime_path: Path) -> dict[str, str]:
+        env = os.environ.copy()
+        if os.name == "nt":
+            extra_paths = [str(runtime_path.parent), str(self.runtime_root.parent.parent)]
+            existing_path = env.get("PATH", "")
+            env["PATH"] = os.pathsep.join(extra_paths + ([existing_path] if existing_path else []))
+        return env
 
 
 def file_sha256(path: Path) -> str:
