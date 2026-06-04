@@ -4,7 +4,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, Literal
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -125,7 +126,7 @@ class LocalModelDownloadTaskManager:
     def _download_to_partial(self, url: str, partial: Path, task_id: str, cancel_event: Event) -> None:
         parsed = urlparse(url)
         if parsed.scheme == "file":
-            source = Path(unquote(parsed.path))
+            source = _file_url_to_path(url)
             total = source.stat().st_size
             self._update(task_id, total_bytes=total)
             with source.open("rb") as reader, partial.open("wb") as writer:
@@ -177,6 +178,16 @@ class LocalModelDownloadTaskManager:
             snapshot = self._tasks[task_id]
             for key, value in changes.items():
                 setattr(snapshot, key, value)
+
+
+def _file_url_to_path(url: str) -> Path:
+    parsed = urlparse(url)
+    if parsed.scheme != "file":
+        raise ValueError("only file URLs can be converted to paths")
+    path = parsed.path
+    if parsed.netloc and parsed.netloc.lower() != "localhost":
+        path = f"//{parsed.netloc}{path}"
+    return Path(url2pathname(path))
 
 
 def register_local_model_routes(app: FastAPI, config_path: Path) -> None:

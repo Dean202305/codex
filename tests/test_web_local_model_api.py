@@ -9,6 +9,7 @@ import yaml
 
 from resume_screening.local_model import platform_runtime_key
 from resume_screening.web.app import create_app
+from resume_screening.web.local_model_api import _file_url_to_path
 
 
 def write_local_config(config_path: Path, tmp_path: Path) -> Path:
@@ -48,6 +49,13 @@ def create_runtime(runtime_root: Path) -> None:
     runtime = runtime_root / key / executable
     runtime.parent.mkdir(parents=True)
     runtime.write_text("@echo off\n" if executable.endswith(".exe") else "#!/bin/sh\n", encoding="utf-8")
+
+
+def test_file_url_to_path_roundtrip(tmp_path: Path) -> None:
+    source = tmp_path / "model source.gguf"
+    source.write_bytes(b"model")
+
+    assert _file_url_to_path(source.as_uri()) == source
 
 
 def test_local_model_status_and_plan_endpoints(tmp_path: Path, monkeypatch) -> None:
