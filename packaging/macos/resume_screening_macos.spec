@@ -8,14 +8,12 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 ROOT = Path.cwd()
 APP_NAME = "小A简历筛选"
 
-datas = collect_data_files("resume_screening")
-
-
 def clean_modules(modules):
     return [module for module in modules if " " not in module]
 
 
-def runtime_binaries():
+def runtime_datas():
+    # Keep local model runtimes in their original directory so executables can find sibling libraries.
     runtime_root = ROOT / "packaging" / "runtime"
     if not runtime_root.exists():
         return []
@@ -24,6 +22,9 @@ def runtime_binaries():
         for path in runtime_root.glob("**/*")
         if path.is_file()
     ]
+
+
+datas = collect_data_files("resume_screening") + runtime_datas()
 
 
 hiddenimports = (
@@ -37,7 +38,7 @@ hiddenimports = (
 a = Analysis(
     [str(ROOT / "packaging" / "macos" / "desktop_entry.py")],
     pathex=[str(ROOT / "src")],
-    binaries=runtime_binaries(),
+    binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

@@ -27,7 +27,9 @@ def test_windows_build_script_and_spec_exist() -> None:
     assert "windows-x64" in script
     assert "ALLOW_MISSING_LOCAL_RUNTIME" in script
     assert "desktop_entry.py" in spec
-    assert "packaging/runtime" in spec
+    assert '"packaging" / "runtime"' in spec
+    assert "runtime_datas" in spec
+    assert "binaries=[]" in spec.replace(" ", "")
     assert "resume_screening" in spec
 
 

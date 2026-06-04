@@ -11,7 +11,7 @@ packaging/runtime/
   windows-x64/llama-server.exe
 ```
 
-If a runtime build produces supporting `.dll` or `.dylib` files, keep them in the same platform folder. The packaging specs include every file under `packaging/runtime`.
+If a runtime build produces supporting `.dll` or `.dylib` files, keep them in the same platform folder. The packaging specs include every file under `packaging/runtime` as resource files so the directory layout is preserved inside the app.
 
 The app does not bundle Qwen model weights. It bundles the runtime binary and downloads the selected GGUF model after the user confirms in the app.
 
