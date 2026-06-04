@@ -21,7 +21,7 @@ def runtime_binaries():
         return []
     return [
         (str(path), str(path.parent.relative_to(ROOT)))
-        for path in runtime_root.glob("**/llama-server*")
+        for path in runtime_root.glob("**/*")
         if path.is_file()
     ]
 

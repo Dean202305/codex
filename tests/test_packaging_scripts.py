@@ -29,3 +29,13 @@ def test_windows_build_script_and_spec_exist() -> None:
     assert "desktop_entry.py" in spec
     assert "packaging/runtime" in spec
     assert "resume_screening" in spec
+
+
+def test_windows_portable_workflow_uploads_zip_artifact() -> None:
+    workflow = Path(".github/workflows/build-windows-portable.yml").read_text(encoding="utf-8")
+
+    assert "windows-latest" in workflow
+    assert "llama-server.exe" in workflow
+    assert "scripts\\build_windows_app.ps1" in workflow or "scripts/build_windows_app.ps1" in workflow
+    assert "actions/upload-artifact" in workflow
+    assert "小A简历筛选-windows-x64.zip" in workflow
