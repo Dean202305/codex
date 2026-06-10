@@ -226,5 +226,5 @@ def test_macos_server_environment_adds_runtime_library_path(tmp_path: Path, monk
 
     env = manager._server_environment(runtime)
 
-    assert env["DYLD_LIBRARY_PATH"].split(":")[0] == str(runtime.parent)
+    assert env["DYLD_LIBRARY_PATH"].split(local_model.os.pathsep)[0] == str(runtime.parent)
     assert "/usr/local/lib" in env["DYLD_LIBRARY_PATH"]
