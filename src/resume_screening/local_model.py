@@ -397,13 +397,13 @@ class LocalModelManager:
 
     def _server_environment(self, runtime_path: Path) -> dict[str, str]:
         env = os.environ.copy()
-        if os.name == "nt":
+        if sys.platform == "darwin":
+            existing_path = env.get("DYLD_LIBRARY_PATH", "")
+            env["DYLD_LIBRARY_PATH"] = os.pathsep.join([str(runtime_path.parent)] + ([existing_path] if existing_path else []))
+        elif os.name == "nt":
             extra_paths = [str(runtime_path.parent), str(self.runtime_root.parent.parent)]
             existing_path = env.get("PATH", "")
             env["PATH"] = os.pathsep.join(extra_paths + ([existing_path] if existing_path else []))
-        elif sys.platform == "darwin":
-            existing_path = env.get("DYLD_LIBRARY_PATH", "")
-            env["DYLD_LIBRARY_PATH"] = os.pathsep.join([str(runtime_path.parent)] + ([existing_path] if existing_path else []))
         return env
 
 

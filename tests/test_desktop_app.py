@@ -13,6 +13,7 @@ def test_app_support_dir_can_be_overridden_for_tests(monkeypatch, tmp_path: Path
 
 def test_ensure_desktop_config_creates_portable_default_config(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("RESUME_SCREENING_APP_HOME", str(tmp_path / "app-home"))
+    monkeypatch.setattr("resume_screening.desktop_app.platform.system", lambda: "Darwin")
 
     config_path = ensure_desktop_config()
 

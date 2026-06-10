@@ -74,8 +74,9 @@ def _migrate_desktop_config(config_path: Path, directory: Path) -> None:
 
     index_path = raw.get("index_path")
     if index_path:
-        parsed = Path(str(index_path)).expanduser()
-        if parsed.is_absolute():
+        raw_index_path = str(index_path)
+        parsed = Path(raw_index_path).expanduser()
+        if parsed.is_absolute() or raw_index_path.startswith(("/", "\\")):
             return
         raw["index_path"] = str(directory / parsed)
     else:
