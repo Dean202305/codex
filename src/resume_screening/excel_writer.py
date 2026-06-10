@@ -14,8 +14,17 @@ DUPLICATE_FILL = PatternFill(fill_type="solid", fgColor="FFFFC7CE")
 
 
 class ResultWorkbookWriter:
-    def __init__(self, path: Path, sheet_name: str = "多维表格") -> None:
+    def __init__(
+        self,
+        path: Path,
+        sheet_name: str = "多维表格",
+        *,
+        score_pass: float = 7,
+        score_excellent: float = 9,
+    ) -> None:
         self.path = path
+        self.score_pass = score_pass
+        self.score_excellent = score_excellent
         self.workbook = load_workbook(path)
         self.sheet = self.workbook[sheet_name]
         self._ensure_headers()
@@ -56,7 +65,7 @@ class ResultWorkbookWriter:
             parsed.job_name,
             default_source_channel,
             result.summary,
-            format_score_block(result),
+            format_score_block(result, score_pass=self.score_pass, score_excellent=self.score_excellent),
             "",
             default_interviewer,
             "",
@@ -77,8 +86,8 @@ class ResultWorkbookWriter:
         self.workbook.save(self.path)
 
 
-def format_score_block(result: ScreeningResult) -> str:
-    conclusion = "优秀" if result.overall_score >= 9 else "通过" if result.overall_score >= 8 else "未通过"
+def format_score_block(result: ScreeningResult, *, score_pass: float = 7, score_excellent: float = 9) -> str:
+    conclusion = "优秀" if result.overall_score >= score_excellent else "通过" if result.overall_score >= score_pass else "未通过"
     scores = result.scores
     return "\n".join(
         [

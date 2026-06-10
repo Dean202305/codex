@@ -42,7 +42,7 @@ def make_config(tmp_path: Path) -> AppConfig:
             "job_book": job_book,
             "result_book": result_book,
             "index_path": tmp_path / "processed_index.json",
-            "model": {"provider": "openai-compatible", "base_url": "", "api_key": "", "model": "", "allow_without_model": True},
+            "model": {"provider": "openai-compatible", "base_url": "", "api_key": "", "model": "", "allow_without_model": True, "fallback_to_local_when_unavailable": False},
         }
     )
 
@@ -61,7 +61,26 @@ def test_precheck_passes_for_valid_local_files(tmp_path: Path) -> None:
 
     assert result.status == "pass"
     assert result.resume_file_count == 2
+    assert result.items[0].name == "模型配置"
     assert any(item.name == "岗位说明书" and item.status == "pass" for item in result.items)
+
+
+def test_precheck_accepts_docx_job_book(tmp_path: Path) -> None:
+    from docx import Document
+
+    config = make_config(tmp_path)
+    docx_path = tmp_path / "财务总监岗位说明书.docx"
+    document = Document()
+    document.add_paragraph("岗位名称：财务总监")
+    document.add_paragraph("岗位职责：负责财务管理、预算、核算、风控和团队建设。")
+    document.add_paragraph("任职要求：本科及以上，8年以上财务管理经验。")
+    document.save(docx_path)
+    config.job_book = docx_path
+
+    result = run_precheck(config)
+
+    assert result.status == "pass"
+    assert any(item.name == "岗位说明书" and item.status == "pass" and "岗位核心画像" in item.message for item in result.items)
 
 
 def test_precheck_fails_when_result_book_is_missing(tmp_path: Path) -> None:
@@ -86,6 +105,29 @@ def test_precheck_warns_when_resume_jobs_do_not_match_job_sheets(tmp_path: Path)
     assert result.status == "warning"
     assert any(
         item.name == "岗位匹配" and item.status == "warning" and "后端开发工程师" in item.message
+        for item in result.items
+    )
+
+
+def test_precheck_labels_openai_compatible_model_as_custom_model(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    config.model = config.model.model_validate(
+        {
+            "provider": "openai-compatible",
+            "base_url": "https://api.example.com/v1",
+            "api_key": "test-key",
+            "model": "gpt-4.1-mini",
+            "timeout_seconds": 60,
+            "temperature": 0.1,
+            "allow_without_model": False,
+        }
+    )
+
+    result = run_precheck(config)
+
+    assert result.status == "pass"
+    assert any(
+        item.name == "模型配置" and item.status == "pass" and item.message == "自定义模型已配置：gpt-4.1-mini；不可用时会自动切换到本地模型"
         for item in result.items
     )
 

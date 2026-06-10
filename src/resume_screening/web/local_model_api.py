@@ -13,7 +13,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from resume_screening.config import AppConfig
-from resume_screening.local_model import LocalModelDownloadPlan, LocalModelManager
+from resume_screening.local_model import LocalModelDownloadPlan, LocalModelManager, local_model_startup_wait_seconds
 from resume_screening.web.config_store import load_config_for_web
 
 DownloadState = Literal["queued", "running", "completed", "cancelled", "failed"]
@@ -46,6 +46,9 @@ class LocalModelDownloadTaskManager:
 
     def status(self) -> dict[str, Any]:
         return self._manager().status().to_dict()
+
+    def environment(self) -> dict[str, Any]:
+        return self._manager().environment_check().to_dict()
 
     def download_plan(self) -> dict[str, Any]:
         return self._manager().download_plan().to_dict()
@@ -92,7 +95,8 @@ class LocalModelDownloadTaskManager:
         status = manager.status()
         if status.state != "ready":
             return {"available": False, "message": status.message, "status": status.to_dict()}
-        available, message = manager.check_service(timeout_seconds=2)
+        wait_seconds = local_model_startup_wait_seconds(manager.config.timeout_seconds)
+        available, message = manager.ensure_service(wait_seconds=wait_seconds)
         return {"available": available, "message": message, "status": status.to_dict()}
 
     def _download_worker(
@@ -196,6 +200,10 @@ def register_local_model_routes(app: FastAPI, config_path: Path) -> None:
     @app.get("/api/local-model/status")
     def get_local_model_status() -> dict[str, Any]:
         return {"status": manager.status()}
+
+    @app.get("/api/local-model/environment")
+    def get_local_model_environment() -> dict[str, Any]:
+        return {"environment": manager.environment()}
 
     @app.get("/api/local-model/download-plan")
     def get_local_model_download_plan() -> dict[str, Any]:

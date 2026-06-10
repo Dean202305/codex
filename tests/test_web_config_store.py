@@ -13,9 +13,35 @@ def test_load_config_for_web_uses_example_defaults_when_missing(tmp_path: Path) 
     assert data["resume_dir"] == "/Users/mac/Downloads"
     assert data["job_book"].endswith("小A自动化岗位说明书_副本.xlsx")
     assert data["result_book"].endswith("小A科技（北京）组织招聘.xlsx")
-    assert data["model"]["allow_without_model"] is True
+    assert data["model"]["allow_without_model"] is False
+    assert data["model"]["fallback_to_local_when_unavailable"] is True
     assert data["model"]["local"]["model_family"] == "qwen3.5"
     assert data["model"]["local"]["port"] == 18080
+
+
+def test_load_config_for_web_turns_off_manual_fallback_when_local_fallback_enabled(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "model": {
+                    "provider": "openai-compatible",
+                    "base_url": "https://api.example.com/v1",
+                    "api_key": "sk-test",
+                    "model": "",
+                    "allow_without_model": True,
+                    "fallback_to_local_when_unavailable": True,
+                }
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    data = load_config_for_web(config_path)
+
+    assert data["model"]["allow_without_model"] is False
+    assert data["model"]["fallback_to_local_when_unavailable"] is True
 
 
 def test_save_config_for_web_round_trips_paths_and_model(tmp_path: Path) -> None:
@@ -40,7 +66,7 @@ def test_save_config_for_web_round_trips_paths_and_model(tmp_path: Path) -> None
                 "allow_without_model": False,
             },
             "screening": {
-                "score_pass": 8,
+                "score_pass": 7,
                 "score_excellent": 9,
                 "categories": {
                     "recommend": "推荐初试",
@@ -57,6 +83,33 @@ def test_save_config_for_web_round_trips_paths_and_model(tmp_path: Path) -> None
     assert saved.resume_dir == tmp_path / "resumes"
     assert raw["model"]["api_key"] == "sk-test"
     assert raw["default_source_channel"] == "Boss直聘"
+
+
+def test_save_config_for_web_allows_custom_model_with_local_fallback(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+
+    saved = save_config_for_web(
+        config_path,
+        {
+            "resume_dir": str(tmp_path / "resumes"),
+            "job_book": str(tmp_path / "jobs.xlsx"),
+            "result_book": str(tmp_path / "result.xlsx"),
+            "model": {
+                "provider": "openai-compatible",
+                "base_url": "https://api.example.com/v1",
+                "api_key": "sk-test",
+                "model": "",
+                "timeout_seconds": 60,
+                "temperature": 0.1,
+                "allow_without_model": False,
+                "fallback_to_local_when_unavailable": True,
+            },
+        },
+    )
+
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert saved.model.fallback_to_local_when_unavailable is True
+    assert raw["model"]["fallback_to_local_when_unavailable"] is True
 
 
 def test_save_config_for_web_persists_normalized_paths(tmp_path: Path) -> None:

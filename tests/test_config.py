@@ -25,9 +25,10 @@ def test_load_config_reads_paths_and_model_settings(tmp_path: Path) -> None:
                     "timeout_seconds": 60,
                     "temperature": 0.1,
                     "allow_without_model": False,
+                    "fallback_to_local_when_unavailable": False,
                 },
                 "screening": {
-                    "score_pass": 8,
+                    "score_pass": 7,
                     "score_excellent": 9,
                     "categories": {
                         "recommend": "推荐初试",
@@ -91,9 +92,10 @@ def test_config_rejects_missing_model_when_manual_mode_disabled() -> None:
                     "timeout_seconds": 60,
                     "temperature": 0.1,
                     "allow_without_model": False,
+                    "fallback_to_local_when_unavailable": False,
                 },
                 "screening": {
-                    "score_pass": 8,
+                    "score_pass": 7,
                     "score_excellent": 9,
                     "categories": {
                         "recommend": "推荐初试",
@@ -104,6 +106,29 @@ def test_config_rejects_missing_model_when_manual_mode_disabled() -> None:
                 },
             }
         )
+
+
+def test_config_accepts_missing_custom_model_when_local_fallback_enabled(tmp_path: Path) -> None:
+    config = AppConfig.model_validate(
+        {
+            "resume_dir": tmp_path / "resumes",
+            "job_book": tmp_path / "jobs.xlsx",
+            "result_book": tmp_path / "result.xlsx",
+            "model": {
+                "provider": "openai-compatible",
+                "base_url": "https://api.example.com/v1",
+                "api_key": "test-key",
+                "model": "",
+                "timeout_seconds": 60,
+                "temperature": 0.1,
+                "allow_without_model": False,
+                "fallback_to_local_when_unavailable": True,
+            },
+        }
+    )
+
+    assert config.model.fallback_to_local_when_unavailable is True
+    assert config.model.is_complete() is False
 
 
 def test_config_accepts_local_qwen_without_api_credentials(tmp_path: Path) -> None:
@@ -171,7 +196,8 @@ def test_cli_app_imports_cleanly() -> None:
 def test_example_config_loads() -> None:
     loaded = load_config(Path("config.example.yaml"))
 
-    assert loaded.model.allow_without_model is True
+    assert loaded.model.allow_without_model is False
+    assert loaded.model.fallback_to_local_when_unavailable is True
 
 
 def test_load_config_rejects_non_mapping_yaml(tmp_path: Path) -> None:

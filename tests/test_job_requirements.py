@@ -2,7 +2,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from resume_screening.job_requirements import load_job_requirements
+from resume_screening.job_requirements import apply_job_profile_overrides, load_job_requirements
 
 
 def make_job_book(path: Path) -> None:
@@ -84,5 +84,119 @@ def test_load_job_requirements_supports_tabular_job_rows(tmp_path: Path) -> None
     assert jobs["后端开发"].sheet_name == "后端开发"
     assert jobs["后端开发"].fields["岗位别名"] == "Java开发"
     assert "Spring Cloud" in jobs["后端开发"].raw_text
+    profile_lines = [line for line in jobs["后端开发"].fields["岗位核心画像"].splitlines() if line.strip()]
+    assert 3 <= len(profile_lines) <= 10
+    assert any(line.startswith("学历:") for line in profile_lines)
+    assert any(line.startswith("工作内容:") for line in profile_lines)
+    assert any(line.startswith("匹配程度:") for line in profile_lines)
     assert jobs["AI产品经理"].is_complete is True
     assert "AI交互产品经理" in jobs["AI产品经理"].raw_text
+
+
+def test_load_job_requirements_supports_docx_core_profile(tmp_path: Path) -> None:
+    from docx import Document
+
+    path = tmp_path / "后端开发工程师岗位说明书.docx"
+    document = Document()
+    document.add_paragraph("岗位名称：后端开发工程师")
+    document.add_paragraph("学历要求：本科及以上")
+    document.add_paragraph("工作经验：3年以上 Java 后端开发经验")
+    document.add_paragraph("岗位职责")
+    document.add_paragraph("负责核心业务系统后端开发，参与架构设计和性能优化。")
+    document.add_paragraph("任职要求")
+    document.add_paragraph("熟悉 Spring Boot、MySQL、Redis，有高并发项目经验。")
+    document.save(path)
+
+    jobs = load_job_requirements(path)
+
+    assert list(jobs) == ["后端开发工程师"]
+    job = jobs["后端开发工程师"]
+    assert job.is_complete is True
+    assert job.fields["来源格式"] == "docx"
+    assert "岗位核心画像" in job.fields
+    profile_lines = [line for line in job.fields["岗位核心画像"].splitlines() if line.strip()]
+    assert 3 <= len(profile_lines) <= 10
+    assert any(line.startswith("学历:") for line in profile_lines)
+    assert any(line.startswith("工作内容:") and "后端开发" in line for line in profile_lines)
+    assert any(line.startswith("匹配程度:") for line in profile_lines)
+    assert "Spring Boot" in job.fields["岗位核心画像"]
+    assert "【岗位核心画像】" in job.raw_text
+
+
+def test_docx_core_profile_summarizes_responsibilities_as_keywords_not_hard_checklist(tmp_path: Path) -> None:
+    from docx import Document
+
+    path = tmp_path / "产品运营岗位说明书.docx"
+    document = Document()
+    document.add_paragraph("岗位名称：AI产品运营")
+    document.add_paragraph("岗位职责")
+    document.add_paragraph("负责用户增长、活动运营、内容运营、数据分析和跨团队协同。")
+    document.add_paragraph("负责社群维护、用户访谈、需求反馈、竞品调研和运营流程优化。")
+    document.add_paragraph("任职要求")
+    document.add_paragraph("熟悉AI产品，有运营数据分析经验，能推动产品和运营协作。")
+    document.save(path)
+
+    job = load_job_requirements(path)["AI产品运营"]
+    profile = job.fields["岗位核心画像"]
+    profile_lines = [line for line in profile.splitlines() if line.strip()]
+
+    assert len(profile_lines) <= 10
+    assert any(line.startswith("工作内容:") for line in profile_lines)
+    assert any(line.startswith("匹配程度:") for line in profile_lines)
+
+
+def test_load_job_requirements_supports_multiple_docx_job_blocks(tmp_path: Path) -> None:
+    from docx import Document
+
+    path = tmp_path / "岗位说明书.docx"
+    document = Document()
+    document.add_paragraph("岗位名称：后端开发工程师")
+    document.add_paragraph("岗位职责：负责 Java 后端开发和服务稳定性建设。")
+    document.add_paragraph("任职要求：本科及以上，熟悉 Spring Boot。")
+    document.add_paragraph("岗位名称：AI产品经理")
+    document.add_paragraph("岗位职责：负责 AI 产品规划、需求分析和跨团队推进。")
+    document.add_paragraph("任职要求：熟悉 Agent 产品，有 ToC 产品经验。")
+    document.save(path)
+
+    jobs = load_job_requirements(path)
+
+    assert set(jobs) == {"后端开发工程师", "AI产品经理"}
+    assert jobs["AI产品经理"].is_complete is True
+    assert 3 <= len([line for line in jobs["AI产品经理"].fields["岗位核心画像"].splitlines() if line.strip()]) <= 10
+    assert "Agent" in jobs["AI产品经理"].fields["岗位核心画像"]
+
+
+def test_apply_job_profile_overrides_adds_custom_only_job() -> None:
+    jobs = {}
+
+    updated = apply_job_profile_overrides(jobs, {"自定义增长岗位": "学历: 本科\n工作内容: 用户增长\n匹配程度: 核心相关"})
+
+    assert "自定义增长岗位" in updated
+    assert updated["自定义增长岗位"].fields["岗位名称"] == "自定义增长岗位"
+    assert updated["自定义增长岗位"].fields["岗位核心画像"].startswith("学历: 本科")
+    assert updated["自定义增长岗位"].is_complete is True
+
+
+def test_apply_job_profile_overrides_compacts_legacy_long_profile() -> None:
+    jobs = {}
+    legacy_profile = "\n".join(
+        [
+            "岗位名称: 后端开发",
+            "学历要求: 本科、硕士、博士",
+            "年龄要求: 27岁以内",
+            "性别要求: 不限",
+            "核心职责1: Java后端开发",
+            "核心职责2: Spring Cloud / Spring Boot",
+            "核心职责3: 数据库设计优化",
+            "岗位jd: 负责医者核心业务系统设计、开发和维护，确保高性能、高可用性和可扩展性。",
+        ]
+    )
+
+    updated = apply_job_profile_overrides(jobs, {"后端开发": legacy_profile})
+    profile_lines = [line for line in updated["后端开发"].fields["岗位核心画像"].splitlines() if line.strip()]
+
+    assert 3 <= len(profile_lines) <= 10
+    assert any(line.startswith("学历:") for line in profile_lines)
+    assert any(line.startswith("年龄:") for line in profile_lines)
+    assert any(line.startswith("性别:") for line in profile_lines)
+    assert any(line.startswith("工作内容:") for line in profile_lines)

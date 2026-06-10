@@ -11,7 +11,9 @@ from pydantic import ValidationError
 
 from resume_screening.config import AppConfig
 from resume_screening.web.config_store import config_to_public_dict, load_config_for_web, save_config_for_web
+from resume_screening.web.job_profiles import JobProfilesPayload, load_job_profiles_for_web, save_job_profiles_for_web
 from resume_screening.web.local_model_api import register_local_model_routes
+from resume_screening.web.model_check import check_model_for_web
 from resume_screening.web.precheck import run_precheck
 from resume_screening.web.runs import RunAlreadyActive, RunManager
 
@@ -53,6 +55,29 @@ def create_app(config_path: Path = Path("config.yaml"), static_dir: Path | None 
         except (ValueError, ValidationError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _jsonable(run_precheck(config))
+
+    @app.post("/api/model/check")
+    def post_model_check() -> dict[str, Any]:
+        try:
+            return _jsonable(check_model_for_web(config_path))
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/job-profiles")
+    def get_job_profiles() -> dict[str, Any]:
+        try:
+            config = AppConfig.model_validate(load_config_for_web(config_path))
+            return {"profiles": _jsonable(load_job_profiles_for_web(config))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/job-profiles")
+    def post_job_profiles(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            parsed = JobProfilesPayload.model_validate(payload)
+            return _jsonable(save_job_profiles_for_web(config_path, parsed))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/runs")
     def start_run() -> dict[str, Any]:

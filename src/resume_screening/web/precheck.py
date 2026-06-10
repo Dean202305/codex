@@ -10,7 +10,7 @@ from resume_screening.config import AppConfig
 from resume_screening.file_scanner import iter_candidate_files
 from resume_screening.filename_parser import parse_resume_filename
 from resume_screening.job_matcher import resolve_job
-from resume_screening.job_requirements import load_job_requirements
+from resume_screening.job_requirements import apply_job_profile_overrides, load_job_requirements
 from resume_screening.local_model import LocalModelManager
 from resume_screening.models import JobRequirement
 
@@ -54,6 +54,8 @@ def _overall_status(items: list[PrecheckItem]) -> CheckStatus:
 def run_precheck(config: AppConfig) -> PrecheckResult:
     items: list[PrecheckItem] = []
 
+    items.extend(_model_precheck_items(config))
+
     resume_files = iter_candidate_files(config.resume_dir, config.job_book, config.result_book)
     resume_count = len(resume_files)
     if not config.resume_dir.exists() or not config.resume_dir.is_dir():
@@ -69,12 +71,16 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
         items.append(PrecheckItem("岗位说明书", "fail", f"文件不存在：{config.job_book}"))
     else:
         try:
-            jobs = load_job_requirements(config.job_book)
+            jobs = apply_job_profile_overrides(
+                load_job_requirements(config.job_book, ocr_command=config.ocr_command),
+                config.job_profile_overrides,
+            )
             usable_jobs = sum(1 for job in jobs.values() if job.is_complete)
+            source_label = "岗位核心画像" if config.job_book.suffix.lower() in {".doc", ".docx"} else "完整岗位要求"
             if usable_jobs == 0:
                 items.append(PrecheckItem("岗位说明书", "warning", "未找到完整岗位要求"))
             else:
-                items.append(PrecheckItem("岗位说明书", "pass", f"找到 {usable_jobs} 个完整岗位要求"))
+                items.append(PrecheckItem("岗位说明书", "pass", f"找到 {usable_jobs} 个{source_label}"))
         except Exception as exc:
             items.append(PrecheckItem("岗位说明书", "fail", f"读取失败：{exc}"))
 
@@ -105,8 +111,6 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
         except Exception as exc:
             items.append(PrecheckItem("招聘结果表", "fail", f"打开失败：{exc}"))
 
-    _append_model_precheck(items, config)
-
     return PrecheckResult(
         status=_overall_status(items),
         resume_file_count=resume_count,
@@ -115,28 +119,30 @@ def run_precheck(config: AppConfig) -> PrecheckResult:
     )
 
 
-def _append_model_precheck(items: list[PrecheckItem], config: AppConfig) -> None:
+def _model_precheck_items(config: AppConfig) -> list[PrecheckItem]:
     model = config.model
     if model.provider == "local-qwen":
         status = LocalModelManager(model).status()
         if status.state == "runtime_missing":
-            items.append(PrecheckItem("本地模型", "fail", status.message))
+            return [PrecheckItem("本地模型", "fail", status.message)]
         elif status.state == "model_missing":
-            items.append(PrecheckItem("本地模型", "warning", f"{status.message}。请先下载并安装本地模型。"))
+            return [PrecheckItem("本地模型", "warning", f"{status.message}。请先下载并安装本地模型。")]
         else:
-            items.append(PrecheckItem("本地模型", "pass", f"本地模型已就绪：{model.model}"))
-        return
+            return [PrecheckItem("本地模型", "pass", f"本地模型已就绪：{model.model}")]
 
     missing_model = [name for name in ("base_url", "api_key", "model") if not getattr(model, name)]
+    if model.fallback_to_local_when_unavailable:
+        if missing_model:
+            return [PrecheckItem("模型配置", "warning", f"自定义模型缺少配置：{', '.join(missing_model)}。预检会自动切换到本地模型")]
+        return [PrecheckItem("模型配置", "pass", f"自定义模型已配置：{model.model}；不可用时会自动切换到本地模型")]
     if model.allow_without_model:
         if missing_model:
-            items.append(PrecheckItem("模型配置", "pass", "当前允许无模型运行，简历会进入待人工二筛"))
+            return [PrecheckItem("模型配置", "pass", "当前为自定义模型；允许无模型运行，简历会进入待人工二筛")]
         else:
-            items.append(PrecheckItem("模型配置", "pass", f"模型已配置：{model.model}"))
+            return [PrecheckItem("模型配置", "pass", f"自定义模型已配置：{model.model}")]
     elif missing_model:
-        items.append(PrecheckItem("模型配置", "fail", f"缺少模型配置：{', '.join(missing_model)}"))
-    else:
-        items.append(PrecheckItem("模型配置", "pass", f"模型已配置：{model.model}"))
+        return [PrecheckItem("模型配置", "fail", f"缺少模型配置：{', '.join(missing_model)}")]
+    return [PrecheckItem("模型配置", "pass", f"自定义模型已配置：{model.model}")]
 
 
 def _unmatched_resume_jobs(

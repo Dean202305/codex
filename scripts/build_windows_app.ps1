@@ -1,10 +1,34 @@
 param(
-    [string]$Python = $env:PYTHON
+    [string]$Python = $env:PYTHON,
+    [switch]$Installer
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $Root
+
+function Resolve-InnoSetupCompiler {
+    $Candidates = @()
+    if ($env:ISCC_PATH) {
+        $Candidates += $env:ISCC_PATH
+    }
+    $Command = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
+    if ($Command) {
+        $Candidates += $Command.Source
+    }
+    if (${env:ProgramFiles(x86)}) {
+        $Candidates += (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe")
+    }
+    if ($env:ProgramFiles) {
+        $Candidates += (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+    }
+    foreach ($Candidate in $Candidates) {
+        if ($Candidate -and (Test-Path $Candidate)) {
+            return $Candidate
+        }
+    }
+    throw "缺少 Inno Setup 编译器 ISCC。请安装 Inno Setup 6，或设置 ISCC_PATH 后重新执行。"
+}
 
 if (-not $Python) {
     $VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
@@ -50,3 +74,14 @@ Compress-Archive -Path $AppDir -DestinationPath $ZipPath -Force
 
 Write-Host "已生成：$AppDir"
 Write-Host "Windows 可迁移压缩包：$ZipPath"
+
+if ($Installer) {
+    $Iscc = Resolve-InnoSetupCompiler
+    $InstallerScript = Join-Path $Root "packaging\windows\resume_screening_installer.iss"
+    & $Iscc $InstallerScript
+    $SetupPath = Join-Path $Root "dist\小A简历筛选-windows-x64-setup.exe"
+    if (-not (Test-Path $SetupPath)) {
+        Write-Error "Windows 安装包生成失败：$SetupPath"
+    }
+    Write-Host "Windows 安装包：$SetupPath"
+}

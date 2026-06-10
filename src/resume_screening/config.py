@@ -15,7 +15,7 @@ class CategoryConfig(BaseModel):
 
 
 class ScreeningConfig(BaseModel):
-    score_pass: float = 8
+    score_pass: float = 7
     score_excellent: float = 9
     categories: CategoryConfig = Field(default_factory=CategoryConfig)
 
@@ -50,11 +50,14 @@ class ModelConfig(BaseModel):
     timeout_seconds: int = 60
     temperature: float = 0.1
     allow_without_model: bool = False
+    fallback_to_local_when_unavailable: bool = True
     local: LocalModelConfig = Field(default_factory=LocalModelConfig)
 
     @model_validator(mode="after")
     def require_model_config_unless_manual_mode(self) -> "ModelConfig":
         if self.allow_without_model:
+            return self
+        if self.provider == "openai-compatible" and self.fallback_to_local_when_unavailable:
             return self
         required = ("model",) if self.provider == "local-qwen" else ("base_url", "api_key", "model")
         missing = [name for name in required if not getattr(self, name)]
@@ -74,6 +77,7 @@ class AppConfig(BaseModel):
     job_book: Path
     result_book: Path
     job_aliases: dict[str, str] = Field(default_factory=dict)
+    job_profile_overrides: dict[str, str] = Field(default_factory=dict)
     default_source_channel: str = ""
     default_interviewer: str = ""
     index_path: Path = Path("data/processed_index.json")

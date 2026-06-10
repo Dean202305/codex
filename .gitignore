@@ -2,6 +2,9 @@
 .worktrees/
 .superpowers/
 node_modules
+__pycache__/
+*.egg-info/
+.DS_Store
 data/
 logs/
 outputs/

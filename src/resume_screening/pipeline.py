@@ -13,7 +13,7 @@ from resume_screening.extractors import extract_text
 from resume_screening.file_scanner import iter_candidate_files
 from resume_screening.filename_parser import parse_resume_filename
 from resume_screening.job_matcher import resolve_job
-from resume_screening.job_requirements import load_job_requirements
+from resume_screening.job_requirements import apply_job_profile_overrides, load_job_requirements
 from resume_screening.model_client import ModelClient
 from resume_screening.models import (
     CATEGORY_MANUAL,
@@ -39,16 +39,37 @@ class ScreeningPipeline:
         self.config = config
         self.event_handler = event_handler
         self.should_stop = should_stop or (lambda: False)
+        self.model_unavailable_message = ""
 
     def _emit(self, event: PipelineEvent) -> None:
         if self.event_handler is not None:
             self.event_handler(event)
 
     def run(self) -> PipelineStats:
-        jobs = load_job_requirements(self.config.job_book)
-        writer = ResultWorkbookWriter(self.config.result_book)
+        jobs = apply_job_profile_overrides(
+            load_job_requirements(self.config.job_book, ocr_command=self.config.ocr_command),
+            self.config.job_profile_overrides,
+        )
+        writer = ResultWorkbookWriter(
+            self.config.result_book,
+            score_pass=self.config.screening.score_pass,
+            score_excellent=self.config.screening.score_excellent,
+        )
         index = DuplicateIndex.load(self.config.index_path)
-        client = ModelClient(self.config.model) if self.config.model.is_complete() else None
+        if self.config.model.provider == "local-qwen":
+            available, message = self._ensure_local_model_service()
+            if not available:
+                self.model_unavailable_message = message
+                self._emit(PipelineEvent("warning", message))
+        client = (
+            ModelClient(
+                self.config.model,
+                score_pass=self.config.screening.score_pass,
+                score_excellent=self.config.screening.score_excellent,
+            )
+            if self.config.model.is_complete() and not self.model_unavailable_message
+            else None
+        )
         stats = PipelineStats()
         files = self._resume_files()
         self._emit(PipelineEvent("run_started", f"开始处理 {len(files)} 个文件", total=len(files)))
@@ -112,6 +133,13 @@ class ScreeningPipeline:
     def _resume_files(self) -> list[Path]:
         return iter_candidate_files(self.config.resume_dir, self.config.job_book, self.config.result_book)
 
+    def _ensure_local_model_service(self) -> tuple[bool, str]:
+        from resume_screening.local_model import LocalModelManager, local_model_startup_wait_seconds
+
+        manager = LocalModelManager(self.config.model)
+        wait_seconds = local_model_startup_wait_seconds(self.config.model.timeout_seconds)
+        return manager.ensure_service(wait_seconds=wait_seconds)
+
     def _screen(
         self,
         parsed: ParsedFilename,
@@ -142,8 +170,9 @@ class ScreeningPipeline:
             missing.append("岗位要求不完整")
             missing.extend(job.missing_fields)
         if client is None:
-            missing.append("模型配置缺失，已按人工二筛处理")
-            return manual_result("模型配置缺失，需人工确认", missing)
+            message = self.model_unavailable_message or "模型配置缺失，已按人工二筛处理"
+            missing.append(message)
+            return manual_result("模型不可用，需人工确认", missing)
 
         try:
             result = client.evaluate(

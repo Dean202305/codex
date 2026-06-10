@@ -15,4 +15,6 @@ If a runtime build produces supporting `.dll` or `.dylib` files, keep them in th
 
 The app does not bundle Qwen model weights. It bundles the runtime binary and downloads the selected GGUF model after the user confirms in the app.
 
+The Windows installer also includes a WebView2 check. If Microsoft Edge WebView2 Runtime is missing and the user keeps the installer task selected, the installer downloads and installs it before launching the app.
+
 Build scripts check the runtime binary for the target platform before packaging. For development-only UI builds without the runtime, set `ALLOW_MISSING_LOCAL_RUNTIME=1`.

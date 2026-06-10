@@ -1,4 +1,4 @@
-name: Build Windows Portable
+name: Build Windows Packages
 
 on:
   workflow_dispatch:
@@ -35,6 +35,10 @@ jobs:
           cache: "npm"
           cache-dependency-path: "web/package-lock.json"
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
       - name: Build llama.cpp server runtime
         shell: pwsh
         run: |
@@ -48,9 +52,9 @@ jobs:
       - name: Run backend tests
         run: python -m pip install ".[test,desktop]" && python -m pytest -q
 
-      - name: Build Windows portable package
+      - name: Build Windows portable and installer packages
         shell: pwsh
-        run: .\scripts\build_windows_app.ps1 -Python python
+        run: .\scripts\build_windows_app.ps1 -Python python -Installer
 
       - name: Verify Windows portable package
         shell: pwsh
@@ -70,10 +74,16 @@ jobs:
           } finally {
             $zip.Dispose()
           }
+          $setup = "dist\小A简历筛选-windows-x64-setup.exe"
+          if (-not (Test-Path $setup)) {
+            throw "Windows installer package is missing $setup"
+          }
 
-      - name: Upload Windows zip
+      - name: Upload Windows packages
         uses: actions/upload-artifact@v4
         with:
           name: xiaoa-resume-screening-windows-x64
-          path: dist/小A简历筛选-windows-x64.zip
+          path: |
+            dist/小A简历筛选-windows-x64.zip
+            dist/小A简历筛选-windows-x64-setup.exe
           if-no-files-found: error

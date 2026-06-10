@@ -59,36 +59,49 @@ fi
 
 ZIP_PATH="$ROOT_DIR/dist/小A简历筛选-mac.zip"
 DMG_PATH="$ROOT_DIR/dist/小A简历筛选-mac.dmg"
-SIGNED_DIR="$(mktemp -d /private/tmp/resume-screening-app.XXXXXX)"
-SIGNED_APP_PATH="$SIGNED_DIR/小A简历筛选.app"
-trap 'rm -rf "$SIGNED_DIR"' EXIT
+PACKAGE_DIR="$(mktemp -d /private/tmp/resume-screening-app.XXXXXX)"
+PACKAGE_APP_PATH="$PACKAGE_DIR/小A简历筛选.app"
+trap 'rm -rf "$PACKAGE_DIR"' EXIT
 
 clean_app_xattrs() {
   local target="$1"
+  if command -v chflags >/dev/null 2>&1; then
+    chflags -R nohidden "$target" 2>/dev/null || true
+  fi
   if command -v xattr >/dev/null 2>&1; then
     xattr -cr "$target" || true
-    find "$target" -name Python.framework -exec xattr -s -d com.apple.FinderInfo {} \; 2>/dev/null || true
-    find "$target" -name Python.framework -exec xattr -d com.apple.FinderInfo {} \; 2>/dev/null || true
-    xattr -d com.apple.FinderInfo "$target" 2>/dev/null || true
+    xattr -cr -s "$target" || true
+    find "$target" -exec xattr -c {} \; 2>/dev/null || true
+    find "$target" -type l -exec xattr -c -s {} \; 2>/dev/null || true
+    for attr in com.apple.FinderInfo com.apple.ResourceFork "com.apple.fileprovider.fpfs#P" com.apple.provenance; do
+      find "$target" -xattrname "$attr" -exec xattr -d "$attr" {} \; 2>/dev/null || true
+      find "$target" -xattrname "$attr" -exec xattr -d -s "$attr" {} \; 2>/dev/null || true
+      find "$target" -exec xattr -d "$attr" {} \; 2>/dev/null || true
+      find "$target" -type l -exec xattr -d -s "$attr" {} \; 2>/dev/null || true
+      xattr -d "$attr" "$target" 2>/dev/null || true
+      xattr -d -s "$attr" "$target" 2>/dev/null || true
+      xattr -d "$attr" "$target/Contents/Frameworks/Python.framework" 2>/dev/null || true
+      xattr -d -s "$attr" "$target/Contents/Frameworks/Python.framework" 2>/dev/null || true
+      xattr -d "$attr" "$target/Contents/Resources/Python.framework" 2>/dev/null || true
+      xattr -d -s "$attr" "$target/Contents/Resources/Python.framework" 2>/dev/null || true
+    done
   fi
 }
 
-ditto --norsrc "$APP_PATH" "$SIGNED_APP_PATH"
-clean_app_xattrs "$SIGNED_APP_PATH"
-
+clean_app_xattrs "$APP_PATH"
+ditto --norsrc "$APP_PATH" "$PACKAGE_APP_PATH"
+clean_app_xattrs "$PACKAGE_APP_PATH"
 if command -v codesign >/dev/null 2>&1; then
-  codesign --force --deep --sign - "$SIGNED_APP_PATH"
-  clean_app_xattrs "$SIGNED_APP_PATH"
-  codesign --verify --deep --strict --verbose=2 "$SIGNED_APP_PATH"
+  codesign --force --deep --sign - "$PACKAGE_APP_PATH"
+  clean_app_xattrs "$PACKAGE_APP_PATH"
+  codesign --verify --deep --strict --verbose=2 "$PACKAGE_APP_PATH"
 fi
 
-rm -rf "$APP_PATH"
-ditto --norsrc "$SIGNED_APP_PATH" "$APP_PATH"
-(cd "$SIGNED_DIR" && ditto -c -k --keepParent --norsrc "小A简历筛选.app" "$ZIP_PATH")
+(cd "$PACKAGE_DIR" && ditto -c -k --keepParent --norsrc "小A简历筛选.app" "$ZIP_PATH")
 
 if command -v hdiutil >/dev/null 2>&1; then
-  ln -s /Applications "$SIGNED_DIR/Applications"
-  hdiutil create -volname "小A简历筛选" -srcfolder "$SIGNED_DIR" -ov -format UDZO "$DMG_PATH"
+  ln -s /Applications "$PACKAGE_DIR/Applications"
+  hdiutil create -volname "小A简历筛选" -srcfolder "$PACKAGE_DIR" -ov -format UDZO "$DMG_PATH"
 fi
 
 echo "已生成：$APP_PATH"

@@ -14,6 +14,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "job_book": "/Users/mac/Downloads/小A自动化岗位说明书_副本.xlsx",
     "result_book": "/Users/mac/Downloads/小A科技（北京）组织招聘.xlsx",
     "job_aliases": {},
+    "job_profile_overrides": {},
     "default_source_channel": "",
     "default_interviewer": "",
     "index_path": "data/processed_index.json",
@@ -25,7 +26,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model": "",
         "timeout_seconds": 60,
         "temperature": 0.1,
-        "allow_without_model": True,
+        "allow_without_model": False,
+        "fallback_to_local_when_unavailable": True,
         "local": {
             "runtime": "llama.cpp",
             "model_family": "qwen3.5",
@@ -42,7 +44,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     },
     "screening": {
-        "score_pass": 8,
+        "score_pass": 7,
         "score_excellent": 9,
         "categories": {
             "recommend": "推荐初试",
@@ -76,11 +78,11 @@ def _read_yaml_mapping(path: Path) -> dict[str, Any]:
 
 
 def load_config_for_web(path: Path) -> dict[str, Any]:
-    return _deep_merge(DEFAULT_CONFIG, _read_yaml_mapping(path))
+    return _normalize_model_fallbacks(_deep_merge(DEFAULT_CONFIG, _read_yaml_mapping(path)))
 
 
 def save_config_for_web(path: Path, data: dict[str, Any]) -> AppConfig:
-    merged = _deep_merge(DEFAULT_CONFIG, data)
+    merged = _normalize_model_fallbacks(_deep_merge(DEFAULT_CONFIG, data))
     validated = AppConfig.model_validate(merged)
     merged = _serialize_validated_paths(merged, validated)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,6 +101,18 @@ def _serialize_validated_paths(data: dict[str, Any], validated: AppConfig) -> di
         if validated.model.local.manifest_path is not None:
             local["manifest_path"] = str(validated.model.local.manifest_path)
     return serialized
+
+
+def _normalize_model_fallbacks(data: dict[str, Any]) -> dict[str, Any]:
+    normalized = deepcopy(data)
+    model = normalized.get("model")
+    if not isinstance(model, dict):
+        return normalized
+    if model.get("provider") == "local-qwen":
+        model["allow_without_model"] = False
+    if model.get("provider", "openai-compatible") == "openai-compatible" and model.get("fallback_to_local_when_unavailable", True):
+        model["allow_without_model"] = False
+    return normalized
 
 
 def config_to_public_dict(data: dict[str, Any]) -> dict[str, Any]:

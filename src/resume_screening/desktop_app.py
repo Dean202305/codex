@@ -5,7 +5,9 @@ import platform
 import socket
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -35,8 +37,51 @@ def ensure_desktop_config() -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     config_path = directory / "config.yaml"
     if not config_path.exists():
-        config_path.write_text(yaml.safe_dump(DEFAULT_CONFIG, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        config_path.write_text(yaml.safe_dump(_desktop_default_config(directory), allow_unicode=True, sort_keys=False), encoding="utf-8")
+    else:
+        _migrate_desktop_config(config_path, directory)
     return config_path
+
+
+def _desktop_default_config(directory: Path) -> dict[str, Any]:
+    config = deepcopy(DEFAULT_CONFIG)
+    config["index_path"] = str(directory / "data" / "processed_index.json")
+    if platform.system() == "Windows":
+        downloads = Path.home() / "Downloads"
+        config["resume_dir"] = str(downloads)
+        config["job_book"] = str(downloads / "岗位说明书.xlsx")
+        config["result_book"] = str(downloads / "招聘结果表.xlsx")
+        model = config["model"]
+        model["provider"] = "local-qwen"
+        model["base_url"] = ""
+        model["api_key"] = ""
+        model["model"] = "qwen3.5-local"
+        model["timeout_seconds"] = max(int(model.get("timeout_seconds") or 0), 120)
+        model["allow_without_model"] = False
+        model["fallback_to_local_when_unavailable"] = True
+        model["local"]["auto_start"] = True
+        model["local"]["auto_download"] = False
+    return config
+
+
+def _migrate_desktop_config(config_path: Path, directory: Path) -> None:
+    try:
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except OSError:
+        return
+    if not isinstance(raw, dict):
+        return
+
+    index_path = raw.get("index_path")
+    if index_path:
+        parsed = Path(str(index_path)).expanduser()
+        if parsed.is_absolute():
+            return
+        raw["index_path"] = str(directory / parsed)
+    else:
+        raw["index_path"] = str(directory / "data" / "processed_index.json")
+
+    config_path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def find_free_port(host: str = "127.0.0.1") -> int:

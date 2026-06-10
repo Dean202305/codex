@@ -41,8 +41,8 @@ On first launch, the script creates or reuses `.venv`, installs the tool, create
 
 The web page has four steps:
 
-1. Confirm resume folder, job requirements workbook, result workbook paths, and optional job aliases.
-2. Save model API settings.
+1. Save model settings.
+2. Confirm resume folder, job requirements workbook, result workbook paths, and optional job aliases.
 3. Run a lightweight precheck.
 4. Start screening and watch live progress, logs, and final statistics.
 
@@ -62,7 +62,19 @@ When copied to a new Mac, copy `小A简历筛选-mac.zip`, unzip it, launch the 
 The app bundles the Python runtime and project dependencies. OCR still depends on a local `tesseract` installation if image or scanned-PDF recognition is needed.
 The app is built for the architecture of the Mac that runs the build script. The current generated package is for Apple Silicon; build again on Intel Mac if an Intel-only Mac needs to run it.
 
+Build Windows packages on Windows:
+
+```powershell
+.\scripts\build_windows_app.ps1 -Python python -Installer
+```
+
+The outputs are `dist\小A简历筛选-windows-x64.zip` and `dist\小A简历筛选-windows-x64-setup.exe`.
+The installer checks WebView2 and can download it after the user confirms the selected installer task.
+Qwen model weights are not bundled; the app checks the local model environment on first launch and downloads the GGUF model only after the user confirms in the app.
+
 ## Manual-Review Mode
+
+By default, `model.fallback_to_local_when_unavailable: true` lets the web app switch from an unavailable custom OpenAI-compatible model to the bundled local Qwen model during precheck.
 
 Set `model.allow_without_model: true` to process files without model calls.
 Rows that require model judgment are classified as `待人工二筛`.

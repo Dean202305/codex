@@ -8,6 +8,11 @@ job_aliases: {}
 #   后端开发工程师: "全栈"
 #   后端开发实习岗: "全栈"
 
+job_profile_overrides: {}
+# 预检页确认岗位画像后会自动写入：
+# job_profile_overrides:
+#   全栈: "自定义岗位核心画像..."
+
 default_source_channel: ""
 default_interviewer: ""
 index_path: "data/processed_index.json"
@@ -20,7 +25,8 @@ model:
   model: ""
   timeout_seconds: 60
   temperature: 0.1
-  allow_without_model: true
+  allow_without_model: false
+  fallback_to_local_when_unavailable: true
   local:
     runtime: "llama.cpp"
     model_family: "qwen3.5"
@@ -36,7 +42,7 @@ model:
     auto_download: false
 
 screening:
-  score_pass: 8
+  score_pass: 7
   score_excellent: 9
   categories:
     recommend: "推荐初试"

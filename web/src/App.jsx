@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CircleAlert, CloudDownload, Cpu, FileSpreadsheet, KeyRound, Loader2, Play, RefreshCcw, Save, StopCircle, X } from "lucide-react";
+import { CheckCircle2, CircleAlert, CloudDownload, Cpu, FileSpreadsheet, KeyRound, Loader2, Play, Plus, RefreshCcw, Save, StopCircle, X } from "lucide-react";
+import { buildProviderConfig } from "./configHelpers.js";
 
-const steps = ["文件路径", "模型配置", "运行前预检", "开始筛选"];
+const steps = ["模型配置", "文件路径", "运行前预检", "开始筛选"];
 
 const emptyConfig = {
   resume_dir: "",
   job_book: "",
   result_book: "",
   job_aliases: {},
+  job_profile_overrides: {},
   default_source_channel: "",
   default_interviewer: "",
   index_path: "data/processed_index.json",
@@ -19,7 +21,8 @@ const emptyConfig = {
     model: "",
     timeout_seconds: 60,
     temperature: 0.1,
-    allow_without_model: true,
+    allow_without_model: false,
+    fallback_to_local_when_unavailable: true,
     local: {
       runtime: "llama.cpp",
       model_family: "qwen3.5",
@@ -76,6 +79,14 @@ function localStatusLabel(state) {
   }[state] || "等待检测";
 }
 
+function environmentStateLabel(state) {
+  return {
+    ready: "已就绪",
+    missing: "需处理",
+    error: "异常"
+  }[state] || "待检测";
+}
+
 function formatJobAliases(aliases = {}) {
   return Object.entries(aliases).map(([source, target]) => `${source}=${target}`).join("\n");
 }
@@ -95,6 +106,23 @@ function parseJobAliases(text) {
   return aliases;
 }
 
+function withProfileIds(profiles = []) {
+  return profiles.map((profile, index) => ({
+    ...profile,
+    client_id: profile.client_id || `${profile.job_name || "job"}-${profile.sheet_name || "sheet"}-${index}`
+  }));
+}
+
+function emptyProfileTemplate() {
+  return [
+    "学历: 未写明",
+    "年龄: 未写明",
+    "性别: 未写明",
+    "工作内容: ",
+    "匹配程度: 核心工作内容匹配优先"
+  ].join("\n");
+}
+
 export function App() {
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState(emptyConfig);
@@ -105,11 +133,15 @@ export function App() {
   const [run, setRun] = useState(null);
   const [runId, setRunId] = useState("");
   const [localStatus, setLocalStatus] = useState(null);
+  const [localEnvironment, setLocalEnvironment] = useState(null);
   const [downloadPlan, setDownloadPlan] = useState(null);
   const [downloadTask, setDownloadTask] = useState(null);
   const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
   const [checkingLocalModel, setCheckingLocalModel] = useState(false);
   const [savedProvider, setSavedProvider] = useState("");
+  const [jobProfiles, setJobProfiles] = useState([]);
+  const [profileDrafts, setProfileDrafts] = useState({});
+  const [profilesConfirmed, setProfilesConfirmed] = useState(false);
 
   useEffect(() => {
     requestJson("/api/config")
@@ -133,9 +165,8 @@ export function App() {
   }, [runId, run?.state]);
 
   useEffect(() => {
-    if (step !== 1 || config.model.provider !== "local-qwen" || savedProvider !== "local-qwen") return;
-    loadLocalModelStatus();
-    loadDownloadPlan();
+    if (step !== 0 || config.model.provider !== "local-qwen" || savedProvider !== "local-qwen") return;
+    refreshLocalModelInfo();
   }, [step, config.model.provider, savedProvider]);
 
   useEffect(() => {
@@ -146,7 +177,7 @@ export function App() {
           setDownloadTask(body.task);
           if (body.task.state === "completed") {
             setNotice("本地模型已安装完成，正在进行可用性检测");
-            loadLocalModelStatus();
+            refreshLocalModelInfo();
             checkLocalModel();
           }
           if (body.task.state === "failed") {
@@ -180,15 +211,25 @@ export function App() {
         ? "warning"
         : "info";
 
+  function resetPrecheckState() {
+    setPrecheck(null);
+    setJobProfiles([]);
+    setProfileDrafts({});
+    setProfilesConfirmed(false);
+  }
+
   function updateField(name, value) {
+    resetPrecheckState();
     setConfig((current) => ({ ...current, [name]: value }));
   }
 
   function updateModel(name, value) {
+    resetPrecheckState();
     setConfig((current) => ({ ...current, model: { ...current.model, [name]: value } }));
   }
 
   function updateLocalModel(name, value) {
+    resetPrecheckState();
     setConfig((current) => ({
       ...current,
       model: {
@@ -199,26 +240,15 @@ export function App() {
   }
 
   async function updateProvider(provider) {
-    const nextConfig = {
-      ...config,
-      model: {
-        ...config.model,
-        provider,
-        model: provider === "local-qwen"
-          ? (config.model.provider === "local-qwen" && config.model.model ? config.model.model : "qwen3.5-local")
-          : config.model.model,
-        timeout_seconds: provider === "local-qwen" ? Math.max(Number(config.model.timeout_seconds) || 0, 120) : config.model.timeout_seconds,
-        allow_without_model: provider === "local-qwen" ? false : config.model.allow_without_model
-      }
-    };
+    const nextConfig = buildProviderConfig(config, provider);
     setConfig(nextConfig);
-    setPrecheck(null);
+    resetPrecheckState();
     setLocalStatus(null);
+    setLocalEnvironment(null);
     setDownloadPlan(null);
-    await persistConfig(nextConfig, provider === "local-qwen" ? "已切换到本地模型" : "已切换到自定义模型");
+    await persistConfig(nextConfig, provider === "local-qwen" ? "已切换到本地模型" : "已切换到自定义模型，请填写 API 地址、API Key 和模型名");
     if (provider === "local-qwen") {
-      await loadLocalModelStatus();
-      await loadDownloadPlan();
+      await refreshLocalModelInfo();
     }
   }
 
@@ -242,16 +272,109 @@ export function App() {
   async function saveConfig() {
     const merged = await persistConfig(config, "配置已保存到本地 config.yaml");
     if (merged?.model.provider === "local-qwen") {
-      await loadLocalModelStatus();
-      await loadDownloadPlan();
+      await refreshLocalModelInfo();
     }
+  }
+
+  async function goToFileStep() {
+    const merged = await persistConfig(config, "模型配置已保存");
+    if (merged) setStep(1);
+  }
+
+  function applyReturnedConfig(returnedConfig) {
+    if (!returnedConfig) return null;
+    const merged = mergeConfig(returnedConfig);
+    setConfig(merged);
+    setJobAliasText(formatJobAliases(merged.job_aliases));
+    setSavedProvider(merged.model.provider);
+    return merged;
+  }
+
+  async function loadJobProfiles() {
+    const body = await requestJson("/api/job-profiles");
+    const profiles = withProfileIds(body.profiles || []);
+    setJobProfiles(profiles);
+    setProfileDrafts(Object.fromEntries(profiles.map((profile) => [profile.client_id, profile.profile || ""])));
+    setProfilesConfirmed(profiles.length === 0);
+    return profiles;
+  }
+
+  async function saveJobProfileDrafts() {
+    setError("");
+    try {
+      const payloadProfiles = jobProfiles
+        .map((profile) => ({
+          job_name: profile.job_name.trim(),
+          profile: profileDrafts[profile.client_id] || ""
+        }))
+        .filter((profile) => profile.job_name && profile.profile.trim());
+      if (payloadProfiles.length === 0) {
+        setError("请至少保留一个岗位画像");
+        return;
+      }
+      const body = await requestJson("/api/job-profiles", {
+        method: "POST",
+        body: JSON.stringify({
+          profiles: payloadProfiles
+        })
+      });
+      applyReturnedConfig(body.config);
+      const profiles = withProfileIds(body.profiles || []);
+      setJobProfiles(profiles);
+      setProfileDrafts(Object.fromEntries(profiles.map((profile) => [profile.client_id, profile.profile || ""])));
+      setProfilesConfirmed(true);
+      setNotice("岗位画像已保存并确认");
+    } catch (exc) {
+      setError(exc.message);
+    }
+  }
+
+  function updateProfileDraft(clientId, value) {
+    setProfileDrafts((current) => ({ ...current, [clientId]: value }));
+    setProfilesConfirmed(false);
+  }
+
+  function updateProfileName(clientId, value) {
+    setJobProfiles((current) => current.map((profile) => (
+      profile.client_id === clientId ? { ...profile, job_name: value } : profile
+    )));
+    setProfilesConfirmed(false);
+  }
+
+  function addJobProfileCard() {
+    const clientId = `custom-${Date.now()}-${jobProfiles.length + 1}`;
+    const nextProfile = {
+      client_id: clientId,
+      job_name: `自定义岗位${jobProfiles.length + 1}`,
+      sheet_name: "手动新增",
+      profile: emptyProfileTemplate(),
+      source: "custom",
+      is_custom_only: true,
+      is_complete: true,
+      missing_fields: []
+    };
+    setJobProfiles((current) => [...current, nextProfile]);
+    setProfileDrafts((current) => ({ ...current, [clientId]: emptyProfileTemplate() }));
+    setProfilesConfirmed(false);
   }
 
   async function runPrecheck() {
     setError("");
     try {
+      const saved = await persistConfig(config, "配置已保存，正在运行预检");
+      if (!saved) return;
+      const modelCheck = await requestJson("/api/model/check", { method: "POST", body: "{}" });
+      applyReturnedConfig(modelCheck.config);
+      if (modelCheck.message) {
+        if (modelCheck.available || modelCheck.switched) {
+          setNotice(modelCheck.message);
+        } else {
+          setError(modelCheck.message);
+        }
+      }
       const body = await requestJson("/api/precheck");
       setPrecheck(body);
+      await loadJobProfiles();
       setStep(2);
     } catch (exc) {
       setError(exc.message);
@@ -268,6 +391,16 @@ export function App() {
     }
   }
 
+  async function loadLocalEnvironment() {
+    try {
+      const body = await requestJson("/api/local-model/environment");
+      setLocalEnvironment(body.environment);
+    } catch (exc) {
+      setLocalEnvironment(null);
+      setError(exc.message);
+    }
+  }
+
   async function loadDownloadPlan() {
     try {
       const body = await requestJson("/api/local-model/download-plan");
@@ -276,6 +409,12 @@ export function App() {
       setDownloadPlan(null);
       setError(exc.message);
     }
+  }
+
+  async function refreshLocalModelInfo() {
+    await loadLocalModelStatus();
+    await loadDownloadPlan();
+    await loadLocalEnvironment();
   }
 
   async function startLocalModelDownload() {
@@ -307,6 +446,7 @@ export function App() {
     try {
       const body = await requestJson("/api/local-model/check", { method: "POST", body: "{}" });
       setLocalStatus(body.status);
+      await loadLocalEnvironment();
       if (body.available) {
         setNotice("本地模型服务可用");
       } else {
@@ -321,7 +461,14 @@ export function App() {
 
   async function startRun() {
     setError("");
+    if (jobProfiles.length > 0 && !profilesConfirmed) {
+      setError("请先确认岗位画像，或修改后点击保存并确认岗位画像");
+      setStep(2);
+      return;
+    }
     try {
+      const saved = await persistConfig(config, "配置已保存，正在开始筛选");
+      if (!saved) return;
       const body = await requestJson("/api/runs", { method: "POST", body: "{}" });
       setRun(body.run);
       setRunId(body.run.run_id);
@@ -391,12 +538,12 @@ export function App() {
         </div>
       )}
 
-      {step === 0 && (
+      {step === 1 && (
         <section className="panel work-panel">
           <div className="panel-title">
             <span className="title-icon"><FileSpreadsheet size={22} /></span>
             <div>
-              <p className="eyebrow">STEP 01</p>
+              <p className="eyebrow">STEP 02</p>
               <h2>文件路径</h2>
             </div>
           </div>
@@ -408,17 +555,17 @@ export function App() {
           </div>
           <div className="actions">
             <button onClick={saveConfig}><Save size={18} />保存配置</button>
-            <button className="primary" onClick={() => setStep(1)}>下一步</button>
+            <button className="primary" onClick={runPrecheck}>运行预检</button>
           </div>
         </section>
       )}
 
-      {step === 1 && (
+      {step === 0 && (
         <section className="panel work-panel">
           <div className="panel-title">
             <span className="title-icon"><KeyRound size={22} /></span>
             <div>
-              <p className="eyebrow">STEP 02</p>
+              <p className="eyebrow">STEP 01</p>
               <h2>模型配置</h2>
             </div>
           </div>
@@ -428,6 +575,36 @@ export function App() {
           </div>
           {config.model.provider === "local-qwen" ? (
             <div className="local-model-grid">
+              {localEnvironment && (
+                <div className={`environment-card ${localEnvironment.ready ? "ready" : "pending"}`}>
+                  <div className="environment-head">
+                    <div>
+                      <span>安装环境检测</span>
+                      <strong>{localEnvironment.ready ? "全部就绪" : "需要处理"}</strong>
+                    </div>
+                    <button onClick={refreshLocalModelInfo}><RefreshCcw size={18} />刷新</button>
+                  </div>
+                  <div className="environment-items">
+                    {localEnvironment.items.map((item) => (
+                      <div className={`environment-item ${item.state}`} key={item.id}>
+                        <div className="environment-copy">
+                          <strong>{item.label}</strong>
+                          <span>{item.message}</span>
+                          <small>{item.path}</small>
+                        </div>
+                        <div className="environment-action">
+                          <span>{environmentStateLabel(item.state)}</span>
+                          {item.action === "download_model" && (
+                            <button className="primary small-button" onClick={() => setShowDownloadConfirm(true)}>
+                              <CloudDownload size={16} />下载
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className={`local-model-card ${localStatus?.state || "unknown"}`}>
                 <div>
                   <span>本地模型状态</span>
@@ -435,7 +612,7 @@ export function App() {
                 </div>
                 <p>{localStatus?.message || "选择本地模型后可检测安装状态"}</p>
                 <div className="actions compact-actions">
-                  <button onClick={loadLocalModelStatus}><RefreshCcw size={18} />刷新</button>
+                  <button onClick={refreshLocalModelInfo}><RefreshCcw size={18} />刷新</button>
                   {localStatus?.state === "model_missing" && <button className="primary" onClick={() => setShowDownloadConfirm(true)}><CloudDownload size={18} />下载并安装</button>}
                   <button onClick={checkLocalModel} disabled={checkingLocalModel || localStatus?.state !== "ready"}>{checkingLocalModel ? <Loader2 className="spin" size={18} /> : <CheckCircle2 size={18} />}检测可用</button>
                 </div>
@@ -467,12 +644,15 @@ export function App() {
               <label>API Key<input type="password" value={config.model.api_key} onChange={(event) => updateModel("api_key", event.target.value)} /></label>
               <label>模型名<input value={config.model.model} onChange={(event) => updateModel("model", event.target.value)} /></label>
               <label>超时时间（秒）<input type="number" value={config.model.timeout_seconds} onChange={(event) => updateModel("timeout_seconds", Number(event.target.value))} /></label>
-              <label className="checkbox full-row"><input type="checkbox" checked={config.model.allow_without_model} onChange={(event) => updateModel("allow_without_model", event.target.checked)} />模型不可用时允许进入待人工二筛兜底</label>
+              <label className="checkbox full-row">
+                <input type="checkbox" checked={Boolean(config.model.fallback_to_local_when_unavailable)} onChange={(event) => updateModel("fallback_to_local_when_unavailable", event.target.checked)} />
+                自定义模型不可用时自动使用本地模型
+              </label>
             </div>
           )}
           <div className="actions">
             <button onClick={saveConfig}><Save size={18} />保存配置</button>
-            <button className="primary" onClick={runPrecheck}>运行预检</button>
+            <button className="primary" onClick={goToFileStep}>下一步</button>
           </div>
         </section>
       )}
@@ -495,7 +675,44 @@ export function App() {
                 <small>个</small>
               </div>
               {precheck.items.map((item) => <div className={`check ${item.status}`} key={item.name}><strong>{item.name}</strong><span>{item.message}</span></div>)}
-              <button className="primary" onClick={startRun}><Play size={18} />开始筛选</button>
+              <div className="profile-review">
+                <div className="profile-review-head">
+                  <div>
+                    <p className="eyebrow">JOB PROFILE</p>
+                    <h3>岗位画像确认</h3>
+                  </div>
+                  <div className="profile-review-actions">
+                    <button onClick={addJobProfileCard}><Plus size={18} />新增岗位</button>
+                    <span className={`confirm-pill ${profilesConfirmed ? "confirmed" : ""}`}>{profilesConfirmed ? "已确认" : "待确认"}</span>
+                  </div>
+                </div>
+                {jobProfiles.length === 0 && <p className="muted">未读取到岗位画像，可以点击新增岗位手动填写。</p>}
+                {jobProfiles.map((profile) => (
+                  <div className="job-profile-card" key={profile.client_id}>
+                    <div className="job-profile-title">
+                      {profile.is_custom_only ? (
+                        <label className="profile-name-field">
+                          岗位名称
+                          <input value={profile.job_name} onChange={(event) => updateProfileName(profile.client_id, event.target.value)} />
+                        </label>
+                      ) : (
+                        <strong>{profile.job_name}</strong>
+                      )}
+                      <span>{profile.source === "custom" ? "自定义画像" : profile.source === "model" ? "模型生成画像" : "规则生成画像"}</span>
+                    </div>
+                    <textarea
+                      value={profileDrafts[profile.client_id] || ""}
+                      onChange={(event) => updateProfileDraft(profile.client_id, event.target.value)}
+                    />
+                    {profile.profile_error && <p className="muted">{profile.profile_error}</p>}
+                    {profile.missing_fields?.length > 0 && <p className="muted">缺失项：{profile.missing_fields.join("、")}</p>}
+                  </div>
+                ))}
+              </div>
+              <div className="actions">
+                {jobProfiles.length > 0 && <button onClick={saveJobProfileDrafts}><Save size={18} />保存并确认岗位画像</button>}
+                <button className="primary" onClick={startRun} disabled={jobProfiles.length > 0 && !profilesConfirmed}><Play size={18} />开始筛选</button>
+              </div>
             </div>
           )}
         </section>
