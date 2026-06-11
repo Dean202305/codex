@@ -49,6 +49,8 @@ def test_windows_build_script_and_spec_exist() -> None:
     assert "Resolve-SevenZip" in script
     assert "7-Zip" in script
     assert "Compress-Archive" not in script
+    assert "/DBundleLocalModel" in script
+    assert "小A简历筛选-windows-x64-setup*.bin" in script
     assert "resume_screening_installer.iss" in script
     assert "小A简历筛选-windows-x64-setup.exe" in script
     assert "desktop_entry.py" in spec
@@ -63,6 +65,9 @@ def test_windows_installer_script_checks_webview2_and_installs_app() -> None:
     webview2 = Path("packaging/windows/install-webview2.ps1").read_text(encoding="utf-8")
 
     assert "OutputBaseFilename=小A简历筛选-windows-x64-setup" in installer
+    assert "DiskSpanning=yes" in installer
+    assert "BundleLocalModel" in installer
+    assert "DiskSliceSize=2100000000" in installer
     assert "小A简历筛选.exe" in installer
     assert "recursesubdirs" in installer
     assert "install-webview2.ps1" in installer
@@ -95,3 +100,5 @@ def test_windows_workflow_uploads_zip_and_installer_artifacts() -> None:
     assert "actions/upload-artifact" in workflow
     assert "小A简历筛选-windows-x64.zip" in workflow
     assert "小A简历筛选-windows-x64-setup.exe" in workflow
+    assert "小A简历筛选-windows-x64-setup*.bin" in workflow
+    assert "offline installer is missing setup bin slices" in workflow

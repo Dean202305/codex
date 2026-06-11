@@ -131,10 +131,27 @@ Write-Host "Windows 可迁移压缩包：$ZipPath"
 if ($Installer) {
     $Iscc = Resolve-InnoSetupCompiler
     $InstallerScript = Join-Path $Root "packaging\windows\resume_screening_installer.iss"
-    & $Iscc $InstallerScript
+    $IsccArgs = @()
+    if ($BundleModelRequested) {
+        $IsccArgs += "/DBundleLocalModel"
+    }
+    $IsccArgs += $InstallerScript
+    & $Iscc @IsccArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Windows 安装包生成失败：ISCC exit code $LASTEXITCODE"
+    }
     $SetupPath = Join-Path $Root "dist\小A简历筛选-windows-x64-setup.exe"
     if (-not (Test-Path $SetupPath)) {
         Write-Error "Windows 安装包生成失败：$SetupPath"
+    }
+    if ($BundleModelRequested) {
+        $SetupBinFiles = Get-ChildItem -Path (Join-Path $Root "dist") -Filter "小A简历筛选-windows-x64-setup*.bin"
+        if (-not $SetupBinFiles) {
+            Write-Error "Windows 离线安装包缺少分卷数据文件：小A简历筛选-windows-x64-setup*.bin"
+        }
+        foreach ($SetupBinFile in $SetupBinFiles) {
+            Write-Host "Windows 安装数据包：$($SetupBinFile.FullName)"
+        }
     }
     Write-Host "Windows 安装包：$SetupPath"
 }

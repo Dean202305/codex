@@ -144,6 +144,10 @@ jobs:
             throw "Windows installer package is missing $setup"
           }
           if ($env:BUNDLE_LOCAL_MODEL -eq "1") {
+            $setupBins = Get-ChildItem -Path dist -Filter "小A简历筛选-windows-x64-setup*.bin"
+            if (-not $setupBins) {
+              throw "Windows offline installer is missing setup bin slices"
+            }
             $model = "dist\小A简历筛选\_internal\packaging\models\qwen\$env:DEFAULT_QWEN_MODEL_FILENAME"
             if (-not (Test-Path $model)) {
               throw "Windows package is missing bundled local model $model"
@@ -157,4 +161,5 @@ jobs:
           path: |
             dist/小A简历筛选-windows-x64.zip
             dist/小A简历筛选-windows-x64-setup.exe
+            dist/小A简历筛选-windows-x64-setup*.bin
           if-no-files-found: error

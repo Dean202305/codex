@@ -17,6 +17,11 @@ OutputDir=..\..\dist
 OutputBaseFilename=小A简历筛选-windows-x64-setup
 Compression=lzma2
 SolidCompression=yes
+#ifdef BundleLocalModel
+DiskSpanning=yes
+SlicesPerDisk=1
+DiskSliceSize=2100000000
+#endif
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
