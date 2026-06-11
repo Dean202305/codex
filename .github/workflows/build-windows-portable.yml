@@ -1,0 +1,165 @@
+name: Build Windows Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_local_model:
+        description: "Build a full offline installer with the Qwen GGUF model bundled"
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches:
+      - resume-screening-cli
+    paths:
+      - ".github/workflows/build-windows-portable.yml"
+      - "packaging/**"
+      - "scripts/build_windows_app.ps1"
+      - "src/**"
+      - "tests/**"
+      - "web/**"
+      - "pyproject.toml"
+
+jobs:
+  build-windows-portable:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      DEFAULT_QWEN_MODEL_FILENAME: Qwen3.5-9B-Q4_K_M.gguf
+      DEFAULT_QWEN_MODEL_URLS: |
+        https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf?download=true
+        https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf?download=true
+        https://modelscope.cn/models/diodel/Qwen3.5-9B-Q4_K_M-GGUF/resolve/master/Qwen3.5-9B-Q4_K_M.gguf
+      BUNDLE_LOCAL_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.bundle_local_model && '1' || '0' }}
+      WINDOWS_ARTIFACT_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.bundle_local_model && 'xiaoa-resume-screening-windows-x64-offline' || 'xiaoa-resume-screening-windows-x64' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "web/package-lock.json"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build llama.cpp server runtime
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$env:RUNNER_TEMP\llama.cpp"
+          cmake -S "$env:RUNNER_TEMP\llama.cpp" -B "$env:RUNNER_TEMP\llama-build" -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON
+          cmake --build "$env:RUNNER_TEMP\llama-build" --config Release --target llama-server --parallel 2
+          New-Item -ItemType Directory -Force packaging\runtime\windows-x64 | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\llama-build\bin\Release\llama-server.exe" packaging\runtime\windows-x64\
+          Copy-Item "$env:RUNNER_TEMP\llama-build\bin\Release\*.dll" packaging\runtime\windows-x64\ -ErrorAction SilentlyContinue
+
+      - name: Download bundled Qwen model
+        if: env.BUNDLE_LOCAL_MODEL == '1'
+        shell: pwsh
+        run: |
+          $targetDir = "packaging\models\qwen"
+          New-Item -ItemType Directory -Force $targetDir | Out-Null
+          $target = Join-Path $targetDir $env:DEFAULT_QWEN_MODEL_FILENAME
+          if (-not (Test-Path $target)) {
+            $urls = $env:DEFAULT_QWEN_MODEL_URLS -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+            $errors = @()
+            foreach ($url in $urls) {
+              Write-Host "Downloading bundled Qwen model from $url"
+              if (Test-Path $target) {
+                Remove-Item $target -Force
+              }
+              curl.exe -L --fail --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 30 --max-time 2400 --output $target $url
+              if ($LASTEXITCODE -ne 0) {
+                $errors += "$url failed with curl exit code $LASTEXITCODE"
+                if (Test-Path $target) {
+                  Remove-Item $target -Force
+                }
+                continue
+              }
+              $size = (Get-Item $target).Length
+              if ($size -ge 1000000000) {
+                break
+              }
+              $errors += "$url downloaded a too-small file: $size bytes"
+              Remove-Item $target -Force
+            }
+            if (-not (Test-Path $target)) {
+              throw "Failed to download bundled model. Attempts: $($errors -join '; ')"
+            }
+          }
+          $size = (Get-Item $target).Length
+          if ($size -lt 1000000000) {
+            throw "Downloaded model looks too small: $size bytes"
+          }
+          Write-Host "Bundled model ready: $target ($size bytes)"
+
+      - name: Run backend tests
+        run: python -m pip install ".[test,desktop]" && python -m pytest -q
+
+      - name: Build Windows portable and installer packages
+        shell: pwsh
+        run: |
+          $arguments = @{ Python = "python"; Installer = $true }
+          if ($env:BUNDLE_LOCAL_MODEL -eq "1") {
+            $arguments.BundleLocalModel = $true
+          }
+          .\scripts\build_windows_app.ps1 @arguments
+
+      - name: Verify Windows portable package
+        shell: pwsh
+        run: |
+          $runtime = "dist\小A简历筛选\_internal\packaging\runtime\windows-x64\llama-server.exe"
+          if (-not (Test-Path $runtime)) {
+            throw "Windows portable package is missing $runtime"
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipPath = "dist\小A简历筛选-windows-x64.zip"
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            $match = $zip.Entries | Where-Object { $_.FullName -like "*packaging/runtime/windows-x64/llama-server.exe" } | Select-Object -First 1
+            if (-not $match) {
+              throw "Windows portable zip is missing packaging/runtime/windows-x64/llama-server.exe"
+            }
+            if ($env:BUNDLE_LOCAL_MODEL -eq "1") {
+              $modelEntry = $zip.Entries | Where-Object { $_.FullName -like "*packaging/models/qwen/$env:DEFAULT_QWEN_MODEL_FILENAME" } | Select-Object -First 1
+              if (-not $modelEntry) {
+                throw "Windows portable zip is missing bundled local model"
+              }
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          $setup = "dist\小A简历筛选-windows-x64-setup.exe"
+          if (-not (Test-Path $setup)) {
+            throw "Windows installer package is missing $setup"
+          }
+          if ($env:BUNDLE_LOCAL_MODEL -eq "1") {
+            $setupBins = Get-ChildItem -Path dist -Filter "小A简历筛选-windows-x64-setup*.bin"
+            if (-not $setupBins) {
+              throw "Windows offline installer is missing setup bin slices"
+            }
+            $model = "dist\小A简历筛选\_internal\packaging\models\qwen\$env:DEFAULT_QWEN_MODEL_FILENAME"
+            if (-not (Test-Path $model)) {
+              throw "Windows package is missing bundled local model $model"
+            }
+          }
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.WINDOWS_ARTIFACT_NAME }}
+          path: |
+            dist/小A简历筛选-windows-x64.zip
+            dist/小A简历筛选-windows-x64-setup.exe
+            dist/小A简历筛选-windows-x64-setup*.bin
+          if-no-files-found: error
