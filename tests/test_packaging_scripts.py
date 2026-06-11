@@ -78,12 +78,13 @@ def test_windows_workflow_uploads_zip_and_installer_artifacts() -> None:
     assert "bundle_local_model" in workflow
     assert "Download bundled Qwen model" in workflow
     assert "xiaoa-resume-screening-windows-x64-offline" in workflow
+    assert '$arguments = @{ Python = "python"; Installer = $true }' in workflow
     assert "llama-server.exe" in workflow
     assert "Verify Windows portable package" in workflow
     assert "Install Inno Setup" in workflow
     assert "packaging/runtime/windows-x64/llama-server.exe" in workflow
     assert "scripts\\build_windows_app.ps1" in workflow or "scripts/build_windows_app.ps1" in workflow
-    assert "-Installer" in workflow
+    assert "Installer = $true" in workflow
     assert "actions/upload-artifact" in workflow
     assert "小A简历筛选-windows-x64.zip" in workflow
     assert "小A简历筛选-windows-x64-setup.exe" in workflow

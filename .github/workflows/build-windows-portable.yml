@@ -82,9 +82,9 @@ jobs:
       - name: Build Windows portable and installer packages
         shell: pwsh
         run: |
-          $arguments = @("-Python", "python", "-Installer")
+          $arguments = @{ Python = "python"; Installer = $true }
           if ($env:BUNDLE_LOCAL_MODEL -eq "1") {
-            $arguments += "-BundleLocalModel"
+            $arguments.BundleLocalModel = $true
           }
           .\scripts\build_windows_app.ps1 @arguments
 
