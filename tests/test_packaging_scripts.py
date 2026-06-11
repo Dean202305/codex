@@ -77,7 +77,10 @@ def test_windows_workflow_uploads_zip_and_installer_artifacts() -> None:
     assert "windows-latest" in workflow
     assert "bundle_local_model" in workflow
     assert "Download bundled Qwen model" in workflow
+    assert "huggingface.co/unsloth/Qwen3.5-9B-GGUF" in workflow
+    assert "huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF" in workflow
     assert "modelscope.cn/models/diodel/Qwen3.5-9B-Q4_K_M-GGUF" in workflow
+    assert "--max-time 2400" in workflow
     assert "xiaoa-resume-screening-windows-x64-offline" in workflow
     assert '$arguments = @{ Python = "python"; Installer = $true }' in workflow
     assert "llama-server.exe" in workflow
