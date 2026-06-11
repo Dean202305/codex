@@ -32,6 +32,26 @@ function Resolve-InnoSetupCompiler {
     throw "缺少 Inno Setup 编译器 ISCC。请安装 Inno Setup 6，或设置 ISCC_PATH 后重新执行。"
 }
 
+function Resolve-SevenZip {
+    $Candidates = @()
+    $Command = Get-Command "7z.exe" -ErrorAction SilentlyContinue
+    if ($Command) {
+        $Candidates += $Command.Source
+    }
+    if ($env:ProgramFiles) {
+        $Candidates += (Join-Path $env:ProgramFiles "7-Zip\7z.exe")
+    }
+    if (${env:ProgramFiles(x86)}) {
+        $Candidates += (Join-Path ${env:ProgramFiles(x86)} "7-Zip\7z.exe")
+    }
+    foreach ($Candidate in $Candidates) {
+        if ($Candidate -and (Test-Path $Candidate)) {
+            return $Candidate
+        }
+    }
+    throw "缺少 7-Zip，无法生成包含本地大模型的大文件 zip。请安装 7-Zip 后重新执行。"
+}
+
 if (-not $Python) {
     $VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
     if (Test-Path $VenvPython) {
@@ -92,7 +112,18 @@ $ZipPath = Join-Path $Root "dist\小A简历筛选-windows-x64.zip"
 if (Test-Path $ZipPath) {
     Remove-Item $ZipPath -Force
 }
-Compress-Archive -Path $AppDir -DestinationPath $ZipPath -Force
+$SevenZip = Resolve-SevenZip
+$AppParent = Split-Path $AppDir -Parent
+$AppLeaf = Split-Path $AppDir -Leaf
+Push-Location $AppParent
+try {
+    & $SevenZip a -tzip -mx=1 $ZipPath $AppLeaf
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Windows 可迁移压缩包生成失败：7-Zip exit code $LASTEXITCODE"
+    }
+} finally {
+    Pop-Location
+}
 
 Write-Host "已生成：$AppDir"
 Write-Host "Windows 可迁移压缩包：$ZipPath"

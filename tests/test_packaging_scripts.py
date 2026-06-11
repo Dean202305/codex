@@ -46,6 +46,9 @@ def test_windows_build_script_and_spec_exist() -> None:
     assert "Windows 包缺少本地模型运行器" in script
     assert "Windows 包缺少内置本地大模型" in script
     assert "ISCC" in script
+    assert "Resolve-SevenZip" in script
+    assert "7-Zip" in script
+    assert "Compress-Archive" not in script
     assert "resume_screening_installer.iss" in script
     assert "小A简历筛选-windows-x64-setup.exe" in script
     assert "desktop_entry.py" in spec
