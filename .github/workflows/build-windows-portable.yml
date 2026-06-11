@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 90
     env:
       DEFAULT_QWEN_MODEL_FILENAME: Qwen3.5-9B-Q4_K_M.gguf
-      DEFAULT_QWEN_MODEL_URL: https://huggingface.co/jc-builds/Qwen3.5-9B-Q4_K_M-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf?download=true
+      DEFAULT_QWEN_MODEL_URL: https://modelscope.cn/models/diodel/Qwen3.5-9B-Q4_K_M-GGUF/resolve/master/Qwen3.5-9B-Q4_K_M.gguf
       BUNDLE_LOCAL_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.bundle_local_model && '1' || '0' }}
       WINDOWS_ARTIFACT_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.bundle_local_model && 'xiaoa-resume-screening-windows-x64-offline' || 'xiaoa-resume-screening-windows-x64' }}
 
@@ -68,7 +68,7 @@ jobs:
           New-Item -ItemType Directory -Force $targetDir | Out-Null
           $target = Join-Path $targetDir $env:DEFAULT_QWEN_MODEL_FILENAME
           if (-not (Test-Path $target)) {
-            curl.exe -L --fail --retry 5 --retry-delay 10 --output $target $env:DEFAULT_QWEN_MODEL_URL
+            curl.exe -L --fail --retry 5 --retry-delay 10 --retry-all-errors --output $target $env:DEFAULT_QWEN_MODEL_URL
           }
           $size = (Get-Item $target).Length
           if ($size -lt 1000000000) {

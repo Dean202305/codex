@@ -20,8 +20,8 @@ from resume_screening.config import ModelConfig
 
 DEFAULT_MODEL_FILENAME = "Qwen3.5-9B-Q4_K_M.gguf"
 DEFAULT_MODEL_URL = (
-    "https://huggingface.co/jc-builds/Qwen3.5-9B-Q4_K_M-GGUF/"
-    "resolve/main/Qwen3.5-9B-Q4_K_M.gguf?download=true"
+    "https://modelscope.cn/models/diodel/Qwen3.5-9B-Q4_K_M-GGUF/"
+    "resolve/master/Qwen3.5-9B-Q4_K_M.gguf"
 )
 DEFAULT_MODEL_SIZE_BYTES = 5_300_000_000
 LOCAL_MODEL_MIN_STARTUP_WAIT_SECONDS = 600
@@ -294,7 +294,7 @@ class LocalModelManager:
             target_path=str(self.target_model_path()),
             size_bytes=DEFAULT_MODEL_SIZE_BYTES,
             sha256=None,
-            source_page="https://huggingface.co/jc-builds/Qwen3.5-9B-Q4_K_M-GGUF",
+            source_page="https://modelscope.cn/models/diodel/Qwen3.5-9B-Q4_K_M-GGUF",
         )
 
     def build_server_command(
