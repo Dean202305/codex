@@ -176,9 +176,8 @@ export function App() {
         .then((body) => {
           setDownloadTask(body.task);
           if (body.task.state === "completed") {
-            setNotice("本地模型已安装完成，正在进行可用性检测");
+            setNotice("本地模型已安装完成，请点击“检测可用”启动并验证本地服务");
             refreshLocalModelInfo();
-            checkLocalModel();
           }
           if (body.task.state === "failed") {
             setError(body.task.error || "模型下载失败");
@@ -529,7 +528,7 @@ export function App() {
               <div><span>大小</span><strong>{formatBytes(downloadPlan?.size_bytes)}</strong></div>
               <div><span>保存位置</span><strong>{downloadPlan?.target_path || config.model.local.model_path || "应用模型目录"}</strong></div>
             </div>
-            <p className="muted">确认后会联网下载模型文件。下载完成后软件会自动安装并检测是否可用。</p>
+            <p className="muted">确认后会联网下载模型文件。下载完成后软件会自动安装；请点击“检测可用”启动并验证本地服务。</p>
             <div className="actions">
               <button onClick={() => setShowDownloadConfirm(false)}>取消</button>
               <button className="primary" onClick={startLocalModelDownload}><CloudDownload size={18} />确认下载</button>

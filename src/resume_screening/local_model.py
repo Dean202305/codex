@@ -304,8 +304,10 @@ class LocalModelManager:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             return False, _service_unavailable_message(exc.response)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            return False, _local_connection_error_message(exc, self.service_base_url)
         except Exception as exc:
-            return False, str(exc)
+            return False, _local_connection_error_message(exc, self.service_base_url) or str(exc)
         return True, "本地模型服务可用"
 
     def ensure_service(self, *, wait_seconds: float = 60) -> tuple[bool, str]:
@@ -397,13 +399,13 @@ class LocalModelManager:
 
     def _server_environment(self, runtime_path: Path) -> dict[str, str]:
         env = os.environ.copy()
-        if sys.platform == "darwin":
-            existing_path = env.get("DYLD_LIBRARY_PATH", "")
-            env["DYLD_LIBRARY_PATH"] = os.pathsep.join([str(runtime_path.parent)] + ([existing_path] if existing_path else []))
-        elif os.name == "nt":
+        if os.name == "nt":
             extra_paths = [str(runtime_path.parent), str(self.runtime_root.parent.parent)]
             existing_path = env.get("PATH", "")
             env["PATH"] = os.pathsep.join(extra_paths + ([existing_path] if existing_path else []))
+        elif sys.platform == "darwin":
+            existing_path = env.get("DYLD_LIBRARY_PATH", "")
+            env["DYLD_LIBRARY_PATH"] = os.pathsep.join([str(runtime_path.parent)] + ([existing_path] if existing_path else []))
         return env
 
 
@@ -432,6 +434,28 @@ def _service_unavailable_message(response: httpx.Response) -> str:
         return "本地模型正在加载"
     detail = message or response.text[:200].strip()
     return f"本地模型服务暂不可用：HTTP {response.status_code}" + (f" {detail}" if detail else "")
+
+
+def _local_connection_error_message(exc: Exception, service_base_url: str) -> str:
+    raw = str(exc)
+    lowered = raw.lower()
+    refused_markers = (
+        "winerror 10061",
+        "connection refused",
+        "actively refused",
+        "actively rejected",
+        "actively refused it",
+        "目标计算机积极拒绝",
+        "errno 61",
+        "errno 111",
+        "all connection attempts failed",
+    )
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)) or any(marker in lowered for marker in refused_markers):
+        return (
+            f"本地模型服务未启动或端口暂不可连接：{service_base_url}。"
+            "请点击“检测可用”启动本地服务；如果仍失败，请查看本地模型日志。"
+        )
+    return ""
 
 
 def _is_loading_message(message: str) -> bool:

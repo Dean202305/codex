@@ -198,6 +198,28 @@ def test_check_service_reports_loading_model_503(tmp_path: Path, monkeypatch) ->
     assert message == "本地模型正在加载"
 
 
+def test_check_service_normalizes_windows_connection_refused_message(tmp_path: Path, monkeypatch) -> None:
+    import httpx
+    import resume_screening.local_model as local_model
+
+    manager = LocalModelManager(local_config(tmp_path), app_data_dir=tmp_path / "app", runtime_root=tmp_path / "runtime")
+
+    def fake_get(url: str, timeout: float) -> httpx.Response:
+        raise httpx.ConnectError(
+            "[WinError 10061] 由于目标计算机积极拒绝，无法连接",
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(local_model.httpx, "get", fake_get)
+
+    available, message = manager.check_service()
+
+    assert available is False
+    assert "本地模型服务未启动或端口暂不可连接" in message
+    assert "检测可用" in message
+    assert "WinError 10061" not in message
+
+
 def test_windows_server_environment_adds_runtime_and_bundle_paths(tmp_path: Path, monkeypatch) -> None:
     import resume_screening.local_model as local_model
 

@@ -9,7 +9,7 @@ import yaml
 
 from resume_screening.local_model import platform_runtime_key
 from resume_screening.web.app import create_app
-from resume_screening.web.local_model_api import _file_url_to_path
+from resume_screening.web.local_model_api import _download_error_message, _file_url_to_path
 
 
 def write_local_config(config_path: Path, tmp_path: Path, *, port: int = 18080) -> Path:
@@ -56,6 +56,18 @@ def test_file_url_to_path_roundtrip(tmp_path: Path) -> None:
     source.write_bytes(b"model")
 
     assert _file_url_to_path(source.as_uri()) == source
+
+
+def test_download_error_message_normalizes_windows_connection_refused() -> None:
+    import httpx
+
+    message = _download_error_message(
+        httpx.ConnectError("[WinError 10061] 由于目标计算机积极拒绝，无法连接")
+    )
+
+    assert "模型下载连接失败" in message
+    assert "VPN/代理" in message
+    assert "WinError 10061" not in message
 
 
 def test_local_model_status_and_plan_endpoints(tmp_path: Path, monkeypatch) -> None:

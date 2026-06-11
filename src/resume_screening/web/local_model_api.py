@@ -125,7 +125,7 @@ class LocalModelDownloadTaskManager:
             )
         except Exception as exc:
             partial.unlink(missing_ok=True)
-            self._update(task_id, state="failed", error=str(exc), message="模型下载失败")
+            self._update(task_id, state="failed", error=_download_error_message(exc), message="模型下载失败")
 
     def _download_to_partial(self, url: str, partial: Path, task_id: str, cancel_event: Event) -> None:
         parsed = urlparse(url)
@@ -192,6 +192,21 @@ def _file_url_to_path(url: str) -> Path:
     if parsed.netloc and parsed.netloc.lower() != "localhost":
         path = f"//{parsed.netloc}{path}"
     return Path(url2pathname(path))
+
+
+def _download_error_message(exc: Exception) -> str:
+    raw = str(exc)
+    lowered = raw.lower()
+    refused_markers = (
+        "winerror 10061",
+        "connection refused",
+        "actively refused",
+        "目标计算机积极拒绝",
+        "all connection attempts failed",
+    )
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)) or any(marker in lowered for marker in refused_markers):
+        return "模型下载连接失败：下载源或本机网络代理暂不可连接。请检查网络、VPN/代理或防火墙后重试。"
+    return raw or "未知下载错误"
 
 
 def register_local_model_routes(app: FastAPI, config_path: Path) -> None:
