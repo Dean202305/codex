@@ -10,9 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
+from resume_screening.config import AppConfig
+from resume_screening.local_model import LocalModelManager
 from resume_screening.web.app import create_app
-from resume_screening.web.config_store import DEFAULT_CONFIG
+from resume_screening.web.config_store import DEFAULT_CONFIG, load_config_for_web
 
 
 APP_NAME = "小A简历筛选"
@@ -40,6 +43,7 @@ def ensure_desktop_config() -> Path:
         config_path.write_text(yaml.safe_dump(_desktop_default_config(directory), allow_unicode=True, sort_keys=False), encoding="utf-8")
     else:
         _migrate_desktop_config(config_path, directory)
+    _register_bundled_local_model(config_path, directory)
     return config_path
 
 
@@ -83,6 +87,18 @@ def _migrate_desktop_config(config_path: Path, directory: Path) -> None:
         raw["index_path"] = str(directory / "data" / "processed_index.json")
 
     config_path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+def _register_bundled_local_model(config_path: Path, directory: Path) -> None:
+    if platform.system() != "Windows":
+        return
+    try:
+        config = AppConfig.model_validate(load_config_for_web(config_path))
+    except (OSError, ValueError, ValidationError):
+        return
+    if config.model.provider != "local-qwen":
+        return
+    LocalModelManager(config.model, app_data_dir=directory).register_bundled_model()
 
 
 def find_free_port(host: str = "127.0.0.1") -> int:

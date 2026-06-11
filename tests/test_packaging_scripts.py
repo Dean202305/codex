@@ -27,7 +27,8 @@ def test_runtime_readme_documents_required_local_model_binaries() -> None:
     assert "macos-x64/llama-server" in readme
     assert "windows-x64/llama-server.exe" in readme
     assert "WebView2" in readme
-    assert "user confirms" in readme
+    assert "-BundleLocalModel" in readme
+    assert "automatically registers" in readme
 
 
 def test_windows_build_script_and_spec_exist() -> None:
@@ -35,11 +36,15 @@ def test_windows_build_script_and_spec_exist() -> None:
     spec = Path("packaging/windows/resume_screening_windows.spec").read_text(encoding="utf-8")
 
     assert "[switch]$Installer" in script
+    assert "[switch]$BundleLocalModel" in script
+    assert "LOCAL_QWEN_MODEL_PATH" in script
     assert "PyInstaller" in script
     assert "windows-x64" in script
     assert "ALLOW_MISSING_LOCAL_RUNTIME" in script
     assert "_internal\\packaging\\runtime" in script
+    assert "_internal\\packaging\\models\\qwen" in script
     assert "Windows 包缺少本地模型运行器" in script
+    assert "Windows 包缺少内置本地大模型" in script
     assert "ISCC" in script
     assert "resume_screening_installer.iss" in script
     assert "小A简历筛选-windows-x64-setup.exe" in script
@@ -70,6 +75,9 @@ def test_windows_workflow_uploads_zip_and_installer_artifacts() -> None:
     workflow = Path(".github/workflows/build-windows-portable.yml").read_text(encoding="utf-8")
 
     assert "windows-latest" in workflow
+    assert "bundle_local_model" in workflow
+    assert "Download bundled Qwen model" in workflow
+    assert "xiaoa-resume-screening-windows-x64-offline" in workflow
     assert "llama-server.exe" in workflow
     assert "Verify Windows portable package" in workflow
     assert "Install Inno Setup" in workflow

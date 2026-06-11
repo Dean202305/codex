@@ -3,7 +3,9 @@ import sys
 
 from resume_screening.config import ModelConfig
 from resume_screening.local_model import (
+    DEFAULT_MODEL_FILENAME,
     LocalModelManager,
+    default_model_bundle_root,
     default_runtime_root,
     local_model_startup_wait_seconds,
     platform_runtime_key,
@@ -51,6 +53,17 @@ def test_default_runtime_root_finds_packaged_onedir_runtime(tmp_path: Path, monk
     assert default_runtime_root() == runtime_root
 
 
+def test_default_model_bundle_root_finds_packaged_onedir_model(tmp_path: Path, monkeypatch) -> None:
+    app_dir = tmp_path / "App"
+    model_root = app_dir / "_internal" / "packaging" / "models"
+    model_root.mkdir(parents=True)
+    monkeypatch.delenv("RESUME_SCREENING_MODEL_BUNDLE_DIR", raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path / "missing-meipass"), raising=False)
+    monkeypatch.setattr(sys, "executable", str(app_dir / "小A简历筛选.exe"))
+
+    assert default_model_bundle_root() == model_root
+
+
 def test_default_runtime_root_falls_back_to_working_directory_runtime(tmp_path: Path, monkeypatch) -> None:
     runtime_root = tmp_path / "packaging" / "runtime"
     runtime_root.mkdir(parents=True)
@@ -60,6 +73,27 @@ def test_default_runtime_root_falls_back_to_working_directory_runtime(tmp_path: 
     monkeypatch.chdir(tmp_path)
 
     assert default_runtime_root() == runtime_root
+
+
+def test_status_uses_bundled_model_when_no_model_path_is_configured(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime" / "windows-x64" / "llama-server.exe"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("@echo off\n", encoding="utf-8")
+    bundled = tmp_path / "models-bundle" / "qwen" / DEFAULT_MODEL_FILENAME
+    bundled.parent.mkdir(parents=True)
+    bundled.write_bytes(b"bundled-model")
+    manager = LocalModelManager(
+        local_config(tmp_path, local={"model_path": ""}),
+        app_data_dir=tmp_path / "app",
+        runtime_root=tmp_path / "runtime",
+        model_bundle_root=tmp_path / "models-bundle",
+    )
+
+    status = manager.status(system="Windows", machine="AMD64")
+
+    assert status.state == "ready"
+    assert status.model_installed is True
+    assert status.model_path == str(bundled)
 
 
 def test_status_reports_missing_runtime_before_model(tmp_path: Path) -> None:

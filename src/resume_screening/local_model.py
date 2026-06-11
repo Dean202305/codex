@@ -131,6 +131,26 @@ def default_runtime_root() -> Path:
     return candidates[0]
 
 
+def default_model_bundle_root() -> Path:
+    override = os.environ.get("RESUME_SCREENING_MODEL_BUNDLE_DIR")
+    if override:
+        return Path(override).expanduser()
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+    executable_root = Path(sys.executable).resolve().parent
+    candidates = [
+        bundle_root / "packaging" / "models",
+        bundle_root / "models",
+        executable_root / "_internal" / "packaging" / "models",
+        executable_root.parent / "Resources" / "packaging" / "models",
+        executable_root.parent / "Frameworks" / "packaging" / "models",
+        Path.cwd() / "packaging" / "models",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
 class LocalModelManager:
     def __init__(
         self,
@@ -138,10 +158,12 @@ class LocalModelManager:
         *,
         app_data_dir: Path | None = None,
         runtime_root: Path | None = None,
+        model_bundle_root: Path | None = None,
     ) -> None:
         self.config = config
         self.app_data_dir = app_data_dir or default_app_data_dir()
         self.runtime_root = runtime_root or default_runtime_root()
+        self.model_bundle_root = model_bundle_root or default_model_bundle_root()
 
     @property
     def service_base_url(self) -> str:
@@ -163,8 +185,16 @@ class LocalModelManager:
         manifest = self.read_manifest()
         manifest_path = manifest.get("path")
         if isinstance(manifest_path, str) and manifest_path:
-            return self._resolve_data_path(Path(manifest_path))
+            resolved = self._resolve_data_path(Path(manifest_path))
+            if resolved.exists():
+                return resolved
+        bundled = self.bundled_model_path()
+        if bundled.exists():
+            return bundled
         return self.app_data_dir / "models" / "qwen" / DEFAULT_MODEL_FILENAME
+
+    def bundled_model_path(self) -> Path:
+        return self.model_bundle_root / "qwen" / DEFAULT_MODEL_FILENAME
 
     def read_manifest(self) -> dict[str, Any]:
         path = self.manifest_path()
@@ -220,6 +250,10 @@ class LocalModelManager:
 
     def environment_check(self, *, system: str | None = None, machine: str | None = None) -> LocalModelEnvironmentReport:
         status = self.status(system=system, machine=machine)
+        bundled = self.bundled_model_path()
+        model_message = "模型文件已安装"
+        if status.model_installed and _same_path(Path(status.model_path), bundled):
+            model_message = "模型文件已内置"
         runtime_item = LocalModelEnvironmentItem(
             id="runtime",
             label="本地模型运行器",
@@ -232,7 +266,7 @@ class LocalModelManager:
             id="model",
             label="本地大模型",
             state="ready" if status.model_installed else "missing",
-            message="模型文件已安装" if status.model_installed else "模型文件未安装，需要用户确认后联网下载",
+            message=model_message if status.model_installed else "模型文件未安装，需要用户确认后联网下载",
             path=status.model_path,
             action="" if status.model_installed else "download_model",
             requires_confirmation=not status.model_installed,
@@ -309,6 +343,24 @@ class LocalModelManager:
         except Exception as exc:
             return False, _local_connection_error_message(exc, self.service_base_url) or str(exc)
         return True, "本地模型服务可用"
+
+    def register_bundled_model(self) -> Path | None:
+        if self.config.local.model_path is not None:
+            return None
+        bundled = self.bundled_model_path()
+        if not bundled.exists() or not bundled.is_file():
+            return None
+        manifest = self.read_manifest()
+        manifest_path = manifest.get("path")
+        if isinstance(manifest_path, str) and _same_path(self._resolve_data_path(Path(manifest_path)), bundled):
+            return bundled
+        self.write_manifest(
+            bundled,
+            size_bytes=bundled.stat().st_size,
+            sha256=None,
+            source_url=f"bundled:{bundled}",
+        )
+        return bundled
 
     def ensure_service(self, *, wait_seconds: float = 60) -> tuple[bool, str]:
         status = self.status()
@@ -418,6 +470,13 @@ def _startup_failure_message(log_path: Path) -> str:
     if not tail:
         return "进程已退出，启动日志为空"
     return tail
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return left == right
 
 
 def _service_unavailable_message(response: httpx.Response) -> str:

@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
 
 import yaml
 
 from resume_screening.desktop_app import app_support_dir, ensure_desktop_config, find_free_port
+from resume_screening.local_model import DEFAULT_MODEL_FILENAME
 
 
 def test_app_support_dir_can_be_overridden_for_tests(monkeypatch, tmp_path: Path) -> None:
@@ -44,6 +46,26 @@ def test_ensure_desktop_config_uses_local_model_defaults_on_windows(monkeypatch,
     assert raw["model"]["fallback_to_local_when_unavailable"] is True
     assert raw["model"]["local"]["auto_start"] is True
     assert raw["model"]["local"]["auto_download"] is False
+
+
+def test_ensure_desktop_config_registers_bundled_model_on_windows(monkeypatch, tmp_path: Path) -> None:
+    app_home = tmp_path / "app-home"
+    bundle_root = tmp_path / "bundle-models"
+    bundled = bundle_root / "qwen" / DEFAULT_MODEL_FILENAME
+    bundled.parent.mkdir(parents=True)
+    bundled.write_bytes(b"bundled-model")
+    monkeypatch.setenv("RESUME_SCREENING_APP_HOME", str(app_home))
+    monkeypatch.setenv("RESUME_SCREENING_MODEL_BUNDLE_DIR", str(bundle_root))
+    monkeypatch.setattr("resume_screening.desktop_app.platform.system", lambda: "Windows")
+    monkeypatch.setattr("resume_screening.desktop_app.Path.home", staticmethod(lambda: tmp_path / "home"))
+
+    ensure_desktop_config()
+
+    manifest_path = app_home / "models" / "qwen" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["path"] == str(bundled)
+    assert manifest["source_url"].startswith("bundled:")
+    assert manifest["size_bytes"] == len(b"bundled-model")
 
 
 def test_ensure_desktop_config_migrates_legacy_relative_index_path(monkeypatch, tmp_path: Path) -> None:

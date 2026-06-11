@@ -10,6 +10,7 @@ logs/
 outputs/
 build/
 dist/
+packaging/models/
 *.spec.bak
 .env
 config.yaml
